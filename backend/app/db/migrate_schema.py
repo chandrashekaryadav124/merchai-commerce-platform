@@ -4,6 +4,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from sqlalchemy import text
+from app.core.config import settings
 from app.db.session import engine
 
 def apply_migrations():
@@ -11,6 +12,9 @@ def apply_migrations():
     Safely applies database migrations required for customer registration integration.
     Adds `app_user_id` foreign key column to `customers` table if not already present.
     """
+    # Safety guard: prevent accidental schema mutations against production cloud database
+    settings.validate_database_target(settings.MYSQL_HOST, is_migration=True)
+
     with engine.connect() as conn:
         # Check if app_user_id column exists in customers table
         check_col_sql = text("""

@@ -12,6 +12,19 @@ dist
 dist-ssr
 *.local
 
+# Environment variables & secrets (NEVER COMMIT)
+.env
+.env.*
+.env.local
+.env.*.local
+*.env
+!.env.example
+!*.example
+
+# Linter cache
+.oxlintrc.json
+.eslintcache
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

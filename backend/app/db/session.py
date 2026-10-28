@@ -40,13 +40,17 @@ def check_db_health() -> Dict[str, Any]:
     try:
         with engine.connect() as conn:
             result = conn.execute(text("SELECT 1;")).fetchone()
-            table_count = conn.execute(text("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE();")).fetchone()[0]
+            current_db = conn.execute(text("SELECT DATABASE();")).fetchone()
+            active_db = current_db[0] if current_db else "unknown"
+            table_count = conn.execute(
+                text("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE();")
+            ).fetchone()[0]
             
             if result and result[0] == 1:
                 return {
                     "status": "healthy",
                     "database_connected": True,
-                    "database_name": settings.MYSQL_DB,
+                    "database_name": active_db,
                     "total_tables": table_count,
                     "engine_driver": "MySQLdb / SQLAlchemy"
                 }
@@ -54,5 +58,14 @@ def check_db_health() -> Dict[str, Any]:
         return {
             "status": "unhealthy",
             "database_connected": False,
-            "error_summary": "Failed to establish MySQL connection. Verify database service and credentials."
+            "error_summary": "Failed to establish database connection. Verify database service and local configuration."
         }
+
+def init_test_db_schema() -> None:
+    """
+    Creates all application tables in the configured isolated test database.
+    Strictly blocked if connected to a production cloud host.
+    """
+    if not settings.is_testing and settings.APP_ENV != "testing":
+        raise RuntimeError("init_test_db_schema can only be invoked in a testing environment.")
+    Base.metadata.create_all(bind=engine)

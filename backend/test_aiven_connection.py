@@ -6,9 +6,9 @@ from sqlalchemy import text, inspect
 sys.path.insert(0, os.path.dirname(__file__))
 
 from app.core.config import settings
-from app.db.session import engine
 
-def mask_string(val: str, show_prefix: int = 4, show_suffix: int = 4) -> str:
+def mask_string(val: str, show_prefix: int = 3, show_suffix: int = 6) -> str:
+    """Masks a sensitive string, showing only minimal prefix and suffix characters."""
     if not val:
         return "(empty)"
     if len(val) <= show_prefix + show_suffix:
@@ -17,19 +17,33 @@ def mask_string(val: str, show_prefix: int = 4, show_suffix: int = 4) -> str:
 
 def test_connection():
     print("=====================================================================")
-    print("   AIVEN CLOUD MYSQL DATABASE CONNECTIVITY & INTEGRITY AUDIT")
+    print("   DATABASE CONNECTIVITY & INTEGRITY DIAGNOSTIC AUDIT")
     print("=====================================================================")
-    
-    # Safely print connection target without revealing passwords or keys
-    print(f"Target Database: {settings.MYSQL_DB}")
-    print(f"Target Host:     {settings.MYSQL_HOST}")
+
+    # Mask sensitive connection metadata
+    masked_host = mask_string(settings.MYSQL_HOST, 4, 15) if "aiven" in settings.MYSQL_HOST.lower() else settings.MYSQL_HOST
+    masked_user = mask_string(settings.MYSQL_USER, 2, 2)
+    masked_db = settings.MYSQL_DB
+
+    print(f"Environment:     {settings.APP_ENV}")
+    print(f"Target Database: {masked_db}")
+    print(f"Target Host:     {masked_host}")
     print(f"Target Port:     {settings.MYSQL_PORT}")
-    print(f"Target User:     {settings.MYSQL_USER}")
+    print(f"Target User:     {masked_user}")
     print(f"SSL Mode:        {settings.MYSQL_SSL_MODE or 'None (default)'}")
-    print(f"SSL CA File:     {settings.MYSQL_SSL_CA or 'System / Default Trust Store'}")
+    print(f"SSL CA File:     {'Configured (masked)' if settings.MYSQL_SSL_CA else 'System / Default Trust Store'}")
     print("---------------------------------------------------------------------")
 
+    # Safety check for production host in development environment
+    if "aiven" in settings.MYSQL_HOST.lower() and not settings.is_production and not settings.ALLOW_PRODUCTION_DB_ACCESS:
+        print("[-] [SAFETY ABORT] Diagnostic check against production cloud database is blocked.")
+        print("    APP_ENV is not 'production' and ALLOW_PRODUCTION_DB_ACCESS is not enabled.")
+        print("    To run diagnostics against production from an authorized machine, set:")
+        print("    ALLOW_PRODUCTION_DB_ACCESS=true")
+        sys.exit(1)
+
     try:
+        from app.db.session import engine
         with engine.connect() as conn:
             # 1. Ping / Liveness Check
             ping_res = conn.execute(text("SELECT 1;")).fetchone()
@@ -82,20 +96,26 @@ def test_connection():
             else:
                 print("[+] [PASSED] All 24 application and historical dataset tables verified accessible!")
 
-            # 5. Spot-check historical order record retention (20,000+ orders)
-            order_cnt = conn.execute(text("SELECT COUNT(*) FROM `orders`;")).fetchone()[0]
-            if order_cnt >= 20000:
-                print(f"[+] [PASSED] Historical orders preserved: {order_cnt:,} records verified.")
-            else:
-                print(f"[!] [NOTICE] Historical orders table has {order_cnt:,} records (expected ~20,000+).")
+            # 5. Spot-check historical order record retention
+            if 'orders' in existing_tables:
+                order_cnt = conn.execute(text("SELECT COUNT(*) FROM `orders`;")).fetchone()[0]
+                if order_cnt >= 20000:
+                    print(f"[+] [PASSED] Historical orders preserved: {order_cnt:,} records verified.")
+                else:
+                    print(f"[!] [NOTICE] Historical orders table has {order_cnt:,} records (expected ~20,000+).")
 
     except Exception as e:
         print("\n[-] [ERROR] Could not connect to the database:")
-        print(f"   Error summary: {type(e).__name__}: {e}")
+        # Sanitize exception message so password or connection string is never echoed
+        err_type = type(e).__name__
+        err_str = str(e)
+        if "@" in err_str and ":" in err_str:
+            err_str = "Connection refused or authentication failed (credentials masked for security)."
+        print(f"   Error summary: {err_type}: {err_str}")
         print("\nTroubleshooting tips:")
-        print("  1. Verify your Aiven MySQL Host, Port, User, and Password in .env.")
-        print("  2. Ensure MYSQL_SSL_MODE=REQUIRED is set.")
-        print("  3. Check that your local IP is allowed in Aiven service IP filtering (or 0.0.0.0/0 allowed).")
+        print("  1. Verify your local MySQL service is running (e.g. host 127.0.0.1:3306).")
+        print("  2. Verify credentials in your local .env file.")
+        print("  3. Ensure APP_ENV and database settings are properly configured.")
         sys.exit(1)
 
     print("=====================================================================")

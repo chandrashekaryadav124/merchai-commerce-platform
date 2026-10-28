@@ -1,0 +1,38 @@
+# =====================================================================
+# Backend Git Ignore Configuration - Defense in Depth
+# =====================================================================
+
+# Environment variables & secrets (NEVER COMMIT)
+.env
+.env.*
+.env.local
+.env.*.local
+*.env
+!.env.example
+!*.example
+
+# Certificates & keys
+*.pem
+*.key
+*.cert
+*.crt
+
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+env/
+venv/
+ENV/
+
+# Database artifacts
+*.sqlite
+*.sqlite3
+*.db
+platform.db
+test.db

@@ -98,18 +98,33 @@ Team_project/
 
 ---
 
-## 🛠️ Step-by-Step Local Run Instructions
+## 🛠️ Safe Local Development Setup
 
-### 1. Database Prerequisites
-Ensure MySQL 8.0 server is running on `localhost:3306` with the `ai_commerce_cleaned` database created and populated.
-Verify credentials in `.env`:
-```env
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=your_db_user
-MYSQL_PASSWORD=your_db_password_here
-MYSQL_DB=ai_commerce_cleaned
+### 1. Database Prerequisites (Separate Local Development Database)
+Ensure a local MySQL 8.0 server is running on `127.0.0.1:3306`.
+Create separate local development and test databases:
+```sql
+CREATE DATABASE IF NOT EXISTS ai_commerce_dev;
+CREATE DATABASE IF NOT EXISTS ai_commerce_test;
 ```
+
+Copy `.env.example` to `.env` in the root directory:
+```bash
+cp .env.example .env
+```
+Ensure `.env` contains local development values:
+```env
+APP_ENV=development
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=
+MYSQL_DB=ai_commerce_dev
+MYSQL_TEST_DB=ai_commerce_test
+MYSQL_SSL_MODE=DISABLED
+```
+> [!IMPORTANT]
+> **Production Safeguard**: The application includes strict safeguards that automatically block local development commands and tests from connecting to or modifying the production Aiven cloud database. Never put production database credentials in your local `.env`.
 
 ### 2. Running the FastAPI Backend
 From the project root directory:
@@ -128,26 +143,29 @@ The FastAPI backend will run on `http://localhost:8000`.
 ### 3. Running the React Frontend
 In a new terminal, from the `frontend` directory:
 ```bash
-# Navigate to frontend directory
 cd frontend
-
-# Start the Vite development server
 npm run dev
 ```
-The application will open on `http://localhost:5173`.
+The frontend SPA will run on `http://localhost:5173`.
 
 ---
 
 ## 🧪 Verification & Testing
 
-To run the automated API and Database connection verification suite:
+### 1. Running Isolated Security & Health Tests
 ```bash
-python scratch/run_backend_tests.py
+pytest backend/tests/test_security_safeguards.py backend/tests/test_health.py -v
 ```
-Expected output:
+
+### 2. Running the Backend Test Suite (Against Isolated Test Database)
+```bash
+python backend/run_tests.py
 ```
-1. Testing GET /health... Status: 200 OK (online)
-2. Testing GET /api/health/db... Status: 200 OK (healthy, database_connected: True, total_tables: 23)
-3. Testing GET /api/v1/products... Status: 200 OK (total products: 550)
-ALL TESTS PASSED PERFECTLY!
+> [!NOTE]
+> `backend/run_tests.py` automatically forces `APP_ENV=testing` and requires an active local test database (`ai_commerce_test`). It strictly halts if pointed to any production cloud host.
+
+### 3. Frontend Build Verification
+```bash
+cd frontend
+npm run build
 ```

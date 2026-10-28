@@ -1,7 +1,35 @@
 import sys
 import os
 
+# Enforce testing environment before importing any app modules or test fixtures
+os.environ["APP_ENV"] = "testing"
+os.environ["TESTING"] = "1"
+
 sys.path.insert(0, os.path.dirname(__file__))
+
+from app.core.config import settings
+
+def verify_test_environment_safety():
+    """
+    Verifies that the test suite is strictly prevented from executing against
+    production cloud databases.
+    """
+    try:
+        target_test_host = settings.MYSQL_TEST_HOST
+        if settings.TEST_DATABASE_URL:
+            from urllib.parse import urlparse
+            target_test_host = urlparse(settings.TEST_DATABASE_URL).hostname or ""
+        settings.validate_database_target(target_test_host, is_test=True)
+    except RuntimeError as e:
+        print("\n==================================================")
+        print("   CRITICAL SAFETY VIOLATION PREVENTED            ")
+        print("==================================================")
+        print(f"[-] {e}")
+        print("\nTests have been halted immediately to protect production data.")
+        sys.exit(1)
+
+# Perform safety verification prior to loading any test modules
+verify_test_environment_safety()
 
 from tests.test_health import test_root_health, test_db_health
 from tests.test_customer_registration import (
@@ -59,7 +87,22 @@ def run_all_tests():
     print("==================================================")
     print("   RUNNING BACKEND VERIFICATION TEST SUITE       ")
     print("==================================================")
-    
+    print(f"Target Environment: {settings.APP_ENV}")
+    print(f"Target Host:        {settings.MYSQL_TEST_HOST}")
+    print(f"Target Database:    {settings.MYSQL_TEST_DB}")
+    print("--------------------------------------------------")
+
+    # Safety check: Verify that target database is connected and safe
+    from app.db.session import check_db_health
+    health = check_db_health()
+    if not health.get("database_connected"):
+        print("[-] [SAFETY NOTICE] Could not connect to isolated test database.")
+        print(f"    Target database: '{settings.MYSQL_TEST_DB}' on host '{settings.MYSQL_TEST_HOST}:{settings.MYSQL_TEST_PORT}'")
+        print("    Running tests requires an active isolated local test database.")
+        print("    Database tests are paused until test database is configured and verified safe.")
+        print("==================================================")
+        sys.exit(1)
+
     tests = [
         ("Health Check Endpoint", test_root_health),
         ("Database Connection Health Check", test_db_health),
@@ -100,7 +143,7 @@ def run_all_tests():
         ("Electronics Store Permitted Categories Filtering", test_5_electronics_store_permitted_categories_filtering),
         ("Grocery Store Permitted Categories Filtering", test_6_grocery_store_permitted_categories_filtering),
         ("General Store Permitted Categories", test_7_general_store_permitted_categories),
-        ("Backend Rejects Unpermitted Category for Store Type", test_8_backend_rejects_unpermitted_category_for_store_type),
+        ("Backend Reject Unpermitted Category for Store Type", test_8_backend_rejects_unpermitted_category_for_store_type),
         ("Seller Cannot Modify Other Seller Store Type", test_9_seller_cannot_modify_other_seller_store_type),
         ("Unapproved Sellers Selling Restriction Enforcement", test_10_unapproved_sellers_cannot_bypass_restrictions)
     ]

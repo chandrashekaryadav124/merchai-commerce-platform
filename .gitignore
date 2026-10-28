@@ -5,10 +5,17 @@
 # Environment & Secrets (NEVER COMMIT)
 .env
 .env.*
+.env.local
+.env.*.local
 *.env
 backend/.env
+backend/.env.*
 frontend/.env
+frontend/.env.*
+*.local
 !.env.example
+!frontend/.env.example
+!backend/.env.example
 !*.example
 *.pem
 *.key

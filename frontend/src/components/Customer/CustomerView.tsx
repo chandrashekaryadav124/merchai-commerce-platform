@@ -54,8 +54,7 @@ interface CustomerViewProps {
   setIsAIOpen: (open: boolean) => void;
   currentUser?: User | null;
   onOpenAuth?: () => void;
-  activeSubTab?: 'shop' | 'account';
-  setActiveSubTab?: (tab: 'shop' | 'account') => void;
+  sidebarSubTab?: string;
 }
 
 export const CustomerView: React.FC<CustomerViewProps> = ({
@@ -68,13 +67,8 @@ export const CustomerView: React.FC<CustomerViewProps> = ({
   setIsAIOpen,
   currentUser,
   onOpenAuth,
-  activeSubTab = 'shop',
-  setActiveSubTab,
+  sidebarSubTab
 }) => {
-  const [internalSubTab, setInternalSubTab] = useState<'shop' | 'account'>('shop');
-  const subTab = setActiveSubTab ? activeSubTab : internalSubTab;
-  const setSubTab = setActiveSubTab || setInternalSubTab;
-
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -184,23 +178,45 @@ export const CustomerView: React.FC<CustomerViewProps> = ({
   }, [products, sortBy]);
 
   const handleAddToCart = async (product: Product, quantity = 1) => {
-    const prodId = product.product_id || product.id || '';
-    if (currentUser) {
-      try {
-        await addDBItemToCart({ product_id: prodId, quantity });
-      } catch (err: any) {
-        console.warn('DB cart sync warning:', err);
-      }
+    // 1. Enforce login before adding to cart
+    if (!currentUser) {
+      if (onOpenAuth) onOpenAuth();
+      return;
     }
-    setCart((prev) => {
-      const existing = prev.find((item) => (item.product.product_id || item.product.id) === prodId);
-      if (existing) {
-        return prev.map((item) =>
-          (item.product.product_id || item.product.id) === prodId ? { ...item, quantity: item.quantity + quantity } : item
-        );
+
+    // 2. Enforce customer role only
+    if (currentUser.role?.toLowerCase() !== 'customer') {
+      alert(`Role restriction: Your account role is '${currentUser.role}'. Only customer accounts can add products to cart and place orders.`);
+      return;
+    }
+
+    // 3. Persist to database cart
+    const prodId = product.product_id || product.id || '';
+    try {
+      const dbCart = await addDBItemToCart({ product_id: prodId, quantity });
+      if (dbCart && dbCart.items) {
+        const mapped: CartItem[] = dbCart.items.map((it: any) => ({
+          product: {
+            id: it.product_id,
+            product_id: it.product_id,
+            name: it.product_name,
+            product_name: it.product_name,
+            price: it.unit_price,
+            stock_quantity: it.stock_quantity,
+            image_url: it.image_url,
+            category: it.category,
+            brand: it.brand,
+            seller_id: it.seller_id,
+            store_name: it.store_name,
+          },
+          quantity: it.quantity,
+        }));
+        setCart(mapped);
       }
-      return [...prev, { product, quantity }];
-    });
+    } catch (err: any) {
+      console.error('DB cart sync error:', err);
+      alert(err.message || 'Failed to add item to cart. Please check stock availability.');
+    }
   };
 
   const handleUpdateItemQuantity = async (productId: string, newQty: number) => {
@@ -403,107 +419,99 @@ export const CustomerView: React.FC<CustomerViewProps> = ({
     0
   );
 
+  const isAccountView = ['orders', 'tracking', 'payments', 'returns', 'reviews', 'account', 'support'].includes(
+    (sidebarSubTab || '').toLowerCase()
+  );
+
   return (
     <div className="space-y-8 pb-12">
-      
-      {/* SUB-NAVIGATION TAB PILLS */}
-      <div className="flex items-center space-x-2 bg-white p-1 rounded-2xl border border-[#DCEAF0] w-fit shadow-xs">
-        <button
-          onClick={() => setSubTab('shop')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            subTab === 'shop'
-              ? 'bg-[#14213D] text-white shadow-sm'
-              : 'text-[#667085] hover:text-[#14213D] hover:bg-[#F5F1E8]'
-          }`}
-        >
-          <ShoppingBag className="w-4 h-4 text-[#FCA311]" />
-          <span>Marketplace Storefront</span>
-        </button>
-
-        <button
-          onClick={() => setSubTab('account')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            subTab === 'account'
-              ? 'bg-[#14213D] text-white shadow-sm'
-              : 'text-[#667085] hover:text-[#14213D] hover:bg-[#F5F1E8]'
-          }`}
-        >
-          <UserIcon className="w-4 h-4 text-[#87CEEB]" />
-          <span>My Account & Orders</span>
-        </button>
-      </div>
-
-      {subTab === 'account' ? (
-        <CustomerAccountView currentUser={currentUser} onOpenAuth={onOpenAuth} />
+      {isAccountView ? (
+        <CustomerAccountView currentUser={currentUser} onOpenAuth={onOpenAuth} activeSubTab={sidebarSubTab} />
       ) : (
         <>
-          {/* ECOMMERCE HERO SECTION */}
-          <section className="relative overflow-hidden rounded-3xl bg-[#14213D] text-white p-8 sm:p-12 shadow-xl border border-[#233554]">
-            {/* Subtle architectural shapes in palette */}
-            <div className="absolute top-0 right-0 -translate-y-16 translate-x-16 w-80 h-80 bg-[#567C8D]/20 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute bottom-0 left-0 translate-y-16 -translate-x-16 w-80 h-80 bg-[#FCA311]/10 rounded-full blur-3xl pointer-events-none" />
+          {/* ECOMMERCE HERO SECTION - Shown on Home/Overview */}
+          {(!sidebarSubTab || sidebarSubTab === 'overview') && (
+            <section className="relative overflow-hidden rounded-3xl bg-[#14213D] text-white p-8 sm:p-12 shadow-xl border border-[#233554]">
+              {/* Subtle architectural shapes in palette */}
+              <div className="absolute top-0 right-0 -translate-y-16 translate-x-16 w-80 h-80 bg-[#567C8D]/20 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute bottom-0 left-0 translate-y-16 -translate-x-16 w-80 h-80 bg-[#FCA311]/10 rounded-full blur-3xl pointer-events-none" />
 
-            <div className="relative z-10 max-w-3xl space-y-5">
-              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-[#87CEEB] text-xs font-semibold backdrop-blur-sm">
-                <MapPin className="w-3.5 h-3.5 text-[#FCA311]" />
-                <span>Pan-India Discovery & Verified Local Small Businesses</span>
-              </div>
+              <div className="relative z-10 max-w-3xl space-y-5">
+                <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-[#87CEEB] text-xs font-semibold backdrop-blur-sm">
+                  <MapPin className="w-3.5 h-3.5 text-[#FCA311]" />
+                  <span>Pan-India Discovery & Verified Local Small Businesses</span>
+                </div>
 
-              <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight font-['Space_Grotesk']">
-                Discover Authentic <span className="text-[#FCA311]">Indian Products</span> Driven by AI
-              </h1>
+                <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight font-['Space_Grotesk']">
+                  Discover Authentic <span className="text-[#FCA311]">Indian Products</span> Driven by AI
+                </h1>
 
-              <p className="text-[#DCEAF0] text-sm sm:text-base leading-relaxed max-w-2xl">
-                Shop directly from neighborhood artisans, spice producers, bakeries, and footwear stores. 
-                Use our Conversational AI Assistant to curate budget-conscious bundles tailored to your lifestyle.
-              </p>
+                <p className="text-[#DCEAF0] text-sm sm:text-base leading-relaxed max-w-2xl">
+                  Shop directly from neighborhood artisans, spice producers, bakeries, and footwear stores. 
+                  Use our Conversational AI Assistant to curate budget-conscious bundles tailored to your lifestyle.
+                </p>
 
-              {/* Action Buttons */}
-              <div className="pt-2 flex flex-wrap gap-3 items-center">
-                <button
-                  onClick={() => {
-                    const el = document.getElementById('products-section');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="px-6 py-2.5 bg-[#FCA311] hover:bg-[#E5920C] text-[#14213D] rounded-xl text-xs font-bold transition shadow-md flex items-center space-x-2 cursor-pointer"
-                >
-                  <span>Shop Catalog Now</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-
-                <button
-                  onClick={() => setIsAIOpen(true)}
-                  className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold border border-white/20 transition flex items-center space-x-2 cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-[#FCA311]" />
-                  <span>Launch AI Assistant</span>
-                </button>
-              </div>
-
-              {/* Quick AI Prompts */}
-              <div className="pt-3 flex flex-wrap gap-2 items-center text-xs text-[#DCEAF0]/80">
-                <span className="font-semibold text-white">Popular Prompts:</span>
-                {[
-                  'Snacks for 15 guests under ₹1,500',
-                  'Homemade Mango Pickle 500g',
-                  'Bata formal shoes',
-                  'Artisanal Sourdough Bread',
-                ].map((prompt, idx) => (
+                {/* Action Buttons */}
+                <div className="pt-2 flex flex-wrap gap-3 items-center">
                   <button
-                    key={idx}
                     onClick={() => {
-                      setAIQuery(prompt);
-                      setIsAIOpen(true);
+                      const el = document.getElementById('products-section');
+                      if (el) el.scrollIntoView({ behavior: 'smooth' });
                     }}
-                    className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[#DCEAF0] hover:text-white border border-white/10 transition cursor-pointer flex items-center space-x-1"
+                    className="px-6 py-2.5 bg-[#FCA311] hover:bg-[#E5920C] text-[#14213D] rounded-xl text-xs font-bold transition shadow-md flex items-center space-x-2 cursor-pointer"
                   >
-                    <Sparkles className="w-3 h-3 text-[#FCA311]" />
-                    <span>{prompt}</span>
+                    <span>Shop Catalog Now</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
-                ))}
+
+                  <button
+                    onClick={() => setIsAIOpen(true)}
+                    className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold border border-white/20 transition flex items-center space-x-2 cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-[#FCA311]" />
+                    <span>Launch AI Assistant</span>
+                  </button>
+                </div>
+
+                {/* Quick AI Prompts */}
+                <div className="pt-3 flex flex-wrap gap-2 items-center text-xs text-[#DCEAF0]/80">
+                  <span className="font-semibold text-white">Popular Prompts:</span>
+                  {[
+                    'Snacks for 15 guests under ₹1,500',
+                    'Homemade Mango Pickle 500g',
+                    'Bata formal shoes',
+                    'Artisanal Sourdough Bread',
+                  ].map((prompt, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setAIQuery(prompt);
+                        setIsAIOpen(true);
+                      }}
+                      className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full text-[11px] text-[#DCEAF0] transition cursor-pointer"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* BROWSE CATALOG PAGE TITLE BANNER */}
+          {sidebarSubTab === 'browse' && (
+            <div className="p-6 bg-white border border-[#DCEAF0] rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
+              <div>
+                <h2 className="text-xl font-bold text-[#14213D] font-['Space_Grotesk']">Marketplace Catalog</h2>
+                <p className="text-xs text-[#667085]">Explore authentic products across verified independent merchants in India</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-[#567C8D] bg-[#DCEAF0]/50 px-3 py-1.5 rounded-xl border border-[#DCEAF0]">
+                  {products.length} Products Available
+                </span>
               </div>
             </div>
-          </section>
+          )}
 
           {/* TRUST PILLARS BAR */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1147,7 +1155,24 @@ export const CustomerView: React.FC<CustomerViewProps> = ({
                   {/* STEP 1: CART REVIEW */}
                   {checkoutStep === 'cart' && (
                     <div>
-                      {cart.length === 0 ? (
+                      {!currentUser ? (
+                        <div className="py-16 text-center space-y-4">
+                          <div className="w-14 h-14 bg-[#F5F1E8] border border-[#DCEAF0] rounded-2xl flex items-center justify-center mx-auto text-[#14213D]">
+                            <LogIn className="w-7 h-7 text-[#FCA311]" />
+                          </div>
+                          <h4 className="text-base font-bold text-[#14213D]">Sign In to Access Your Cart</h4>
+                          <p className="text-xs text-[#667085] max-w-xs mx-auto leading-relaxed">
+                            Shopping cart persistence and order placement require an authenticated customer account.
+                          </p>
+                          <button
+                            onClick={onOpenAuth}
+                            className="px-6 py-2.5 bg-[#14213D] hover:bg-[#0B132B] text-white rounded-xl text-xs font-bold transition shadow-md inline-flex items-center space-x-2 cursor-pointer"
+                          >
+                            <LogIn className="w-4 h-4 text-[#FCA311]" />
+                            <span>Sign In / Register</span>
+                          </button>
+                        </div>
+                      ) : cart.length === 0 ? (
                         <div className="py-20 text-center text-[#667085] space-y-3">
                           <ShoppingCart className="w-12 h-12 mx-auto text-[#DCEAF0] stroke-1 text-[#567C8D]" />
                           <p className="text-sm font-bold text-[#14213D]">Your cart is empty.</p>
@@ -1500,7 +1525,7 @@ export const CustomerView: React.FC<CustomerViewProps> = ({
                         <button
                           onClick={() => {
                             handleCloseCartDrawer();
-                            setSubTab('account');
+                            window.location.hash = '#/customer/orders';
                           }}
                           className="flex-1 py-2.5 bg-[#14213D] hover:bg-[#0B132B] text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
                         >
@@ -1519,7 +1544,7 @@ export const CustomerView: React.FC<CustomerViewProps> = ({
                 </div>
 
                 {/* BOTTOM ACTION BAR */}
-                {checkoutStep !== 'confirmed' && cart.length > 0 && (
+                {checkoutStep !== 'confirmed' && Boolean(currentUser) && cart.length > 0 && (
                   <div className="pt-4 border-t border-[#DCEAF0] space-y-2">
                     {checkoutStep === 'cart' && (
                       <div className="space-y-3">

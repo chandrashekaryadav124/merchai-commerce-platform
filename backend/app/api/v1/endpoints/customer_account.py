@@ -15,7 +15,9 @@ from app.schemas.customer_account import (
     CustomerReviewResponse,
     CreateReviewRequest,
     SupportTicketResponse,
-    CreateSupportTicketRequest
+    CreateSupportTicketRequest,
+    CustomerFinancialOverviewResponse,
+    CustomerSpendingTrendPoint
 )
 from app.services.customer_account_service import (
     get_customer_profile_service,
@@ -28,7 +30,9 @@ from app.services.customer_account_service import (
     get_customer_reviews_service,
     create_customer_review_service,
     get_customer_tickets_service,
-    create_customer_ticket_service
+    create_customer_ticket_service,
+    get_customer_financial_overview_service,
+    get_customer_spending_trend_service
 )
 
 router = APIRouter()
@@ -53,6 +57,26 @@ def get_account_summary(
     Returns high-level dashboard summary metrics for the authenticated customer.
     """
     return get_account_summary_service(db, current_user)
+
+@router.get("/financial-overview", response_model=CustomerFinancialOverviewResponse)
+def get_customer_financial_overview(
+    current_user: AppUser = Depends(RoleChecker(["customer", "admin"])),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns comprehensive customer financial KPIs and payment distribution metrics.
+    """
+    return get_customer_financial_overview_service(db, current_user)
+
+@router.get("/spending-trend", response_model=List[CustomerSpendingTrendPoint])
+def get_customer_spending_trend(
+    current_user: AppUser = Depends(RoleChecker(["customer", "admin"])),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns monthly spending trend for the authenticated customer.
+    """
+    return get_customer_spending_trend_service(db, current_user)
 
 @router.get("/orders", response_model=PaginatedOrdersResponse)
 def get_customer_orders(
@@ -94,13 +118,24 @@ def get_customer_shipments(
 
 @router.get("/payments", response_model=List[PaymentHistoryResponse])
 def get_customer_payments(
+    status_filter: Optional[str] = None,
+    method_filter: Optional[str] = None,
+    limit: int = Query(default=100, le=200),
+    offset: int = Query(default=0, ge=0),
     current_user: AppUser = Depends(RoleChecker(["customer", "admin"])),
     db: Session = Depends(get_db)
 ):
     """
-    Returns payment transaction history linked to the customer's orders.
+    Returns payment transaction history linked to the customer's orders with optional status & method filtering.
     """
-    return get_customer_payments_service(db, current_user)
+    return get_customer_payments_service(
+        db,
+        current_user,
+        status_filter=status_filter,
+        method_filter=method_filter,
+        limit=limit,
+        offset=offset
+    )
 
 @router.get("/returns", response_model=List[ReturnRefundResponse])
 def get_customer_returns(

@@ -1,12 +1,9 @@
 import { useState, useEffect } from 'react';
 import {
   User as UserIcon,
-  ShoppingBag,
   Truck,
   CreditCard,
-  RotateCcw,
   Star,
-  LifeBuoy,
   ChevronRight,
   RefreshCw,
   Award,
@@ -21,9 +18,28 @@ import {
   MapPin,
   Plus,
   Trash2,
-  Edit3
+  Edit3,
+  TrendingUp,
+  PieChart as PieIcon,
+  ShieldCheck
 } from 'lucide-react';
-import type { User as UserType, CustomerAddress } from '../../types';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid
+} from 'recharts';
+import type {
+  User as UserType,
+  CustomerAddress,
+  CustomerFinancialOverview,
+  CustomerSpendingTrendPoint
+} from '../../types';
 import {
   fetchCustomerAccountProfile,
   fetchCustomerAccountSummary,
@@ -40,16 +56,39 @@ import {
   createCustomerAddress,
   updateCustomerAddress,
   deleteCustomerAddress,
-  setDefaultCustomerAddress
+  setDefaultCustomerAddress,
+  fetchCustomerFinancialOverview,
+  fetchCustomerSpendingTrend
 } from '../../services/api';
+import { CustomerOrderTrackingModal } from './CustomerOrderTrackingModal';
 
 interface CustomerAccountViewProps {
   currentUser?: UserType | null;
   onOpenAuth?: () => void;
+  activeSubTab?: string;
 }
 
-export function CustomerAccountView({ currentUser, onOpenAuth }: CustomerAccountViewProps) {
+export function CustomerAccountView({ currentUser, onOpenAuth, activeSubTab }: CustomerAccountViewProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'addresses' | 'shipments' | 'payments' | 'returns' | 'reviews' | 'support'>('overview');
+  const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!activeSubTab) return;
+    const tabMap: Record<string, 'overview' | 'orders' | 'addresses' | 'shipments' | 'payments' | 'returns' | 'reviews' | 'support'> = {
+      overview: 'overview',
+      orders: 'orders',
+      tracking: 'shipments',
+      shipments: 'shipments',
+      payments: 'payments',
+      returns: 'returns',
+      reviews: 'reviews',
+      addresses: 'addresses',
+      account: 'addresses',
+      support: 'support'
+    };
+    const target = tabMap[activeSubTab.toLowerCase()];
+    if (target) setActiveTab(target);
+  }, [activeSubTab]);
   
   // State
   const [profile, setProfile] = useState<any>(null);
@@ -82,6 +121,12 @@ export function CustomerAccountView({ currentUser, onOpenAuth }: CustomerAccount
   const [page, setPage] = useState<number>(1);
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('');
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
+
+  // Financial & Transactions Analytics State
+  const [financialOverview, setFinancialOverview] = useState<CustomerFinancialOverview | null>(null);
+  const [spendingTrend, setSpendingTrend] = useState<CustomerSpendingTrendPoint[]>([]);
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>('all');
   
   // Review creation state
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -120,7 +165,7 @@ export function CustomerAccountView({ currentUser, onOpenAuth }: CustomerAccount
     setLoading(true);
     setError(null);
     try {
-      const [profRes, sumRes, shipRes, payRes, retRes, revRes, tickRes, addrRes] = await Promise.all([
+      const [profRes, sumRes, shipRes, payRes, retRes, revRes, tickRes, addrRes, finRes, trendRes] = await Promise.all([
         fetchCustomerAccountProfile().catch((err) => {
           console.warn('Profile fetch warning:', err);
           return null;
@@ -134,7 +179,9 @@ export function CustomerAccountView({ currentUser, onOpenAuth }: CustomerAccount
         fetchCustomerAccountReturns().catch(() => []),
         fetchCustomerAccountReviews().catch(() => []),
         fetchCustomerAccountTickets().catch(() => []),
-        fetchCustomerAddresses().catch(() => [])
+        fetchCustomerAddresses().catch(() => []),
+        fetchCustomerFinancialOverview().catch(() => null),
+        fetchCustomerSpendingTrend().catch(() => [])
       ]);
 
       setProfile(profRes);
@@ -145,6 +192,8 @@ export function CustomerAccountView({ currentUser, onOpenAuth }: CustomerAccount
       setReviewsList(revRes);
       setSupportTickets(tickRes);
       setAddresses(addrRes);
+      setFinancialOverview(finRes);
+      setSpendingTrend(trendRes);
     } catch (err: any) {
       setError(err.message || 'Failed to load customer account information.');
     } finally {
@@ -395,104 +444,7 @@ export function CustomerAccountView({ currentUser, onOpenAuth }: CustomerAccount
         </div>
       )}
 
-      {/* ACCOUNT NAVIGATION TABS */}
-      <div className="flex items-center space-x-1.5 border-b border-[#DCEAF0] overflow-x-auto pb-1 scrollbar-none">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-            activeTab === 'overview'
-              ? 'bg-[#14213D] text-white shadow-xs'
-              : 'text-[#667085] hover:text-[#14213D] hover:bg-white'
-          }`}
-        >
-          <UserIcon className="w-4 h-4 text-[#FCA311]" />
-          <span>Account Overview</span>
-        </button>
 
-        <button
-          onClick={() => setActiveTab('orders')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-            activeTab === 'orders'
-              ? 'bg-[#14213D] text-white shadow-xs'
-              : 'text-[#667085] hover:text-[#14213D] hover:bg-white'
-          }`}
-        >
-          <ShoppingBag className="w-4 h-4 text-[#87CEEB]" />
-          <span>Order History ({summary?.total_orders || 0})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('addresses')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-            activeTab === 'addresses'
-              ? 'bg-[#14213D] text-white shadow-xs'
-              : 'text-[#667085] hover:text-[#14213D] hover:bg-white'
-          }`}
-        >
-          <MapPin className="w-4 h-4 text-[#FCA311]" />
-          <span>Delivery Addresses ({addresses.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('shipments')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-            activeTab === 'shipments'
-              ? 'bg-[#14213D] text-white shadow-xs'
-              : 'text-[#667085] hover:text-[#14213D] hover:bg-white'
-          }`}
-        >
-          <Truck className="w-4 h-4 text-[#567C8D]" />
-          <span>Shipment Tracking ({shipments.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('payments')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-            activeTab === 'payments'
-              ? 'bg-[#14213D] text-white shadow-xs'
-              : 'text-[#667085] hover:text-[#14213D] hover:bg-white'
-          }`}
-        >
-          <CreditCard className="w-4 h-4 text-[#15803D]" />
-          <span>Payments ({payments.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('returns')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-            activeTab === 'returns'
-              ? 'bg-[#14213D] text-white shadow-xs'
-              : 'text-[#667085] hover:text-[#14213D] hover:bg-white'
-          }`}
-        >
-          <RotateCcw className="w-4 h-4 text-[#FCA311]" />
-          <span>Returns & Refunds ({returnsList.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('reviews')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-            activeTab === 'reviews'
-              ? 'bg-[#14213D] text-white shadow-xs'
-              : 'text-[#667085] hover:text-[#14213D] hover:bg-white'
-          }`}
-        >
-          <Star className="w-4 h-4 text-[#FCA311]" />
-          <span>My Product Reviews ({reviewsList.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('support')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-            activeTab === 'support'
-              ? 'bg-[#14213D] text-white shadow-xs'
-              : 'text-[#667085] hover:text-[#14213D] hover:bg-white'
-          }`}
-        >
-          <LifeBuoy className="w-4 h-4 text-[#567C8D]" />
-          <span>Support Tickets ({supportTickets.length})</span>
-        </button>
-      </div>
 
       {/* TAB 1: OVERVIEW & DASHBOARD */}
       {activeTab === 'overview' && (
@@ -653,11 +605,19 @@ export function CustomerAccountView({ currentUser, onOpenAuth }: CustomerAccount
                       <p className="text-xs text-[#667085] mt-1">Placed on {ord.order_date} at {ord.order_time || '12:00'}</p>
                     </div>
 
-                    <div className="flex items-center space-x-4">
-                      <div className="text-right">
+                    <div className="flex items-center space-x-2">
+                      <div className="text-right mr-2">
                         <span className="text-[11px] text-[#667085]">Total Authoritative Price</span>
                         <p className="text-base font-extrabold text-[#14213D]">₹{ord.final_amount?.toLocaleString('en-IN')}</p>
                       </div>
+                      <button
+                        onClick={() => setTrackingOrderId(ord.order_id)}
+                        className="px-3 py-1.5 bg-[#14213D] hover:bg-[#0B132B] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer shadow-xs"
+                        title="Track shipment progression"
+                      >
+                        <Truck className="w-3.5 h-3.5 text-[#FCA311]" />
+                        <span>Track</span>
+                      </button>
                       <button
                         onClick={() => handleOpenOrderDetail(ord.order_id)}
                         className="px-3 py-1.5 bg-[#DCEAF0] hover:bg-[#87CEEB]/40 text-[#14213D] rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
@@ -829,6 +789,7 @@ export function CustomerAccountView({ currentUser, onOpenAuth }: CustomerAccount
                   <th className="p-3">Shipping Method</th>
                   <th className="p-3">Dispatch Date</th>
                   <th className="p-3">Status</th>
+                  <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F5F1E8]">
@@ -849,6 +810,17 @@ export function CustomerAccountView({ currentUser, onOpenAuth }: CustomerAccount
                         {s.delivery_status}
                       </span>
                     </td>
+                    <td className="p-3 text-right">
+                      {s.order_id && (
+                        <button
+                          onClick={() => setTrackingOrderId(s.order_id)}
+                          className="px-2.5 py-1 bg-[#14213D] hover:bg-[#0B132B] text-white rounded-lg text-[10px] font-bold transition inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <Truck className="w-3 h-3 text-[#FCA311]" />
+                          <span>Track</span>
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -857,45 +829,295 @@ export function CustomerAccountView({ currentUser, onOpenAuth }: CustomerAccount
         </div>
       )}
 
-      {/* TAB 4: PAYMENTS HISTORY */}
+      {/* TAB 4: FINANCIAL & PAYMENT OVERVIEW */}
       {activeTab === 'payments' && (
-        <div className="space-y-4">
-          <div className="p-5 bg-white border border-[#DCEAF0] rounded-2xl flex justify-between items-center shadow-xs">
-            <h3 className="font-bold text-sm text-[#14213D]">Payments & Transactions ({payments.length})</h3>
-            <span className="text-xs text-[#667085]">Database: payments</span>
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="p-5 bg-white border border-[#DCEAF0] rounded-2xl flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-xs">
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="p-2 bg-[#DCEAF0] rounded-lg text-[#567C8D]">
+                  <CreditCard className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="font-bold text-base text-[#14213D] font-['Space_Grotesk']">Customer Financial & Payment Overview</h3>
+                  <p className="text-xs text-[#667085]">Authoritative order finances, payment transaction records and refunds</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <ShieldCheck className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                Verified Customer Identity
+              </span>
+            </div>
           </div>
 
+          {/* 7 KPI CARDS */}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+            <div className="p-4 bg-white border border-[#DCEAF0] rounded-2xl shadow-xs">
+              <p className="text-[11px] font-bold text-[#667085] uppercase tracking-wider">Total Orders</p>
+              <p className="text-xl font-extrabold text-[#14213D] mt-1 font-mono">
+                {financialOverview?.total_orders ?? ordersData.total}
+              </p>
+              <span className="text-[10px] text-[#567C8D]">Placed to date</span>
+            </div>
+
+            <div className="p-4 bg-white border border-[#DCEAF0] rounded-2xl shadow-xs">
+              <p className="text-[11px] font-bold text-[#667085] uppercase tracking-wider">Total Spending</p>
+              <p className="text-xl font-extrabold text-[#14213D] mt-1 font-mono">
+                ₹{(financialOverview?.total_spending ?? profile?.total_spend ?? 0).toLocaleString('en-IN')}
+              </p>
+              <span className="text-[10px] text-[#567C8D]">Gross order value</span>
+            </div>
+
+            <div className="p-4 bg-white border border-emerald-200 bg-emerald-50/20 rounded-2xl shadow-xs">
+              <p className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Successfully Paid</p>
+              <p className="text-xl font-extrabold text-emerald-700 mt-1 font-mono">
+                ₹{(financialOverview?.total_paid ?? payments.reduce((acc, p) => p.payment_status === 'Success' ? acc + (p.amount_paid || 0) : acc, 0)).toLocaleString('en-IN')}
+              </p>
+              <span className="text-[10px] text-emerald-600">Settled payments</span>
+            </div>
+
+            <div className="p-4 bg-white border border-amber-200 bg-amber-50/20 rounded-2xl shadow-xs">
+              <p className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">Pending Payment</p>
+              <p className="text-xl font-extrabold text-amber-700 mt-1 font-mono">
+                ₹{(financialOverview?.pending_payment_amount ?? 0).toLocaleString('en-IN')}
+              </p>
+              <span className="text-[10px] text-amber-600">Awaiting capture</span>
+            </div>
+
+            <div className="p-4 bg-white border border-rose-200 bg-rose-50/20 rounded-2xl shadow-xs">
+              <p className="text-[11px] font-bold text-rose-700 uppercase tracking-wider">Failed Payment</p>
+              <p className="text-xl font-extrabold text-rose-700 mt-1 font-mono">
+                ₹{(financialOverview?.failed_payment_amount ?? 0).toLocaleString('en-IN')}
+              </p>
+              <span className="text-[10px] text-rose-600">Declined/Uncharged</span>
+            </div>
+
+            <div className="p-4 bg-white border border-blue-200 bg-blue-50/20 rounded-2xl shadow-xs">
+              <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Total Refunded</p>
+              <p className="text-xl font-extrabold text-blue-700 mt-1 font-mono">
+                ₹{(financialOverview?.total_refunded ?? payments.reduce((acc, p) => acc + (p.refund_amount || 0), 0)).toLocaleString('en-IN')}
+              </p>
+              <span className="text-[10px] text-blue-600">Credited back</span>
+            </div>
+
+            <div className="p-4 bg-white border border-[#DCEAF0] rounded-2xl shadow-xs">
+              <p className="text-[11px] font-bold text-[#667085] uppercase tracking-wider">Transactions</p>
+              <p className="text-xl font-extrabold text-[#14213D] mt-1 font-mono">
+                {financialOverview?.total_transactions ?? payments.length}
+              </p>
+              <span className="text-[10px] text-[#567C8D]">Database records</span>
+            </div>
+          </div>
+
+          {/* VISUALIZATIONS SECTION */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Monthly Spending Trend */}
+            <div className="p-5 bg-white border border-[#DCEAF0] rounded-2xl shadow-xs">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <TrendingUp className="w-4 h-4 text-[#567C8D]" />
+                  <h4 className="font-bold text-sm text-[#14213D]">Monthly Spending Trend</h4>
+                </div>
+                <span className="text-[11px] text-[#667085] font-mono">Amounts in INR (₹)</span>
+              </div>
+              <div className="h-60 w-full">
+                {spendingTrend.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={spendingTrend} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="customerSpendingGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#567C8D" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#567C8D" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F0F4F8" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#667085' }} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: '#667085' }} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip
+                        formatter={(val: any) => [`₹${Number(val).toLocaleString('en-IN')}`, 'Spending']}
+                        labelFormatter={(lbl) => `Month: ${lbl}`}
+                        contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #DCEAF0', fontSize: '11px' }}
+                      />
+                      <Area type="monotone" dataKey="spending" stroke="#567C8D" strokeWidth={2.5} fillOpacity={1} fill="url(#customerSpendingGrad)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-xs text-[#667085]">
+                    No historical monthly spending recorded for this account.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Spending by Category */}
+            <div className="p-5 bg-white border border-[#DCEAF0] rounded-2xl shadow-xs">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <PieIcon className="w-4 h-4 text-[#567C8D]" />
+                  <h4 className="font-bold text-sm text-[#14213D]">Spending by Product Category</h4>
+                </div>
+                <span className="text-[11px] text-[#667085]">Distribution</span>
+              </div>
+              <div className="h-60 w-full">
+                {financialOverview?.spending_by_category && financialOverview.spending_by_category.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={financialOverview.spending_by_category.slice(0, 5)} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F0F4F8" />
+                      <XAxis dataKey="category" tick={{ fontSize: 9, fill: '#667085' }} interval={0} angle={-15} textAnchor="end" />
+                      <YAxis tick={{ fontSize: 10, fill: '#667085' }} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip
+                        formatter={(val: any) => [`₹${Number(val).toLocaleString('en-IN')}`, 'Spent']}
+                        contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #DCEAF0', fontSize: '11px' }}
+                      />
+                      <Bar dataKey="amount" fill="#2F5261" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-xs text-[#667085]">
+                    Category spending distribution available after completing purchase orders.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* PAYMENT METHOD BREAKDOWN PILLS */}
+          {financialOverview?.payment_methods && financialOverview.payment_methods.length > 0 && (
+            <div className="p-4 bg-white border border-[#DCEAF0] rounded-2xl shadow-xs">
+              <h4 className="text-xs font-bold text-[#667085] uppercase tracking-wider mb-3">Payment Methods Used</h4>
+              <div className="flex flex-wrap gap-2">
+                {financialOverview.payment_methods.map((pm) => (
+                  <div key={pm.method} className="px-3 py-1.5 bg-[#FAF9F6] border border-[#DCEAF0] rounded-xl flex items-center space-x-2 text-xs">
+                    <span className="font-bold text-[#14213D]">{pm.method}</span>
+                    <span className="text-[#667085]">({pm.count} txns)</span>
+                    <span className="font-mono font-bold text-[#567C8D]">₹{pm.amount.toLocaleString('en-IN')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* FILTERS & TABLE CONTROLS */}
+          <div className="p-4 bg-white border border-[#DCEAF0] rounded-2xl flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-xs">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-[#14213D]">Recent Transactions</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#DCEAF0] text-[#2F5261]">
+                {payments.filter(p => {
+                  if (paymentStatusFilter !== 'all' && (p.payment_status || '').toLowerCase() !== paymentStatusFilter.toLowerCase()) return false;
+                  if (paymentMethodFilter !== 'all' && (p.payment_method || '').toLowerCase() !== paymentMethodFilter.toLowerCase()) return false;
+                  return true;
+                }).length} Results
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Status Filter */}
+              <select
+                value={paymentStatusFilter}
+                onChange={(e) => setPaymentStatusFilter(e.target.value)}
+                className="text-xs px-3 py-1.5 bg-[#FAF9F6] border border-[#DCEAF0] rounded-xl text-[#14213D] font-medium focus:outline-none focus:ring-1 focus:ring-[#567C8D]"
+              >
+                <option value="all">All Payment Statuses</option>
+                <option value="Success">Success</option>
+                <option value="Refunded">Refunded</option>
+                <option value="Failed">Failed</option>
+                <option value="Pending">Pending</option>
+              </select>
+
+              {/* Method Filter */}
+              <select
+                value={paymentMethodFilter}
+                onChange={(e) => setPaymentMethodFilter(e.target.value)}
+                className="text-xs px-3 py-1.5 bg-[#FAF9F6] border border-[#DCEAF0] rounded-xl text-[#14213D] font-medium focus:outline-none focus:ring-1 focus:ring-[#567C8D]"
+              >
+                <option value="all">All Payment Methods</option>
+                <option value="UPI">UPI</option>
+                <option value="Credit Card">Credit Card</option>
+                <option value="Debit Card">Debit Card</option>
+                <option value="Net Banking">Net Banking</option>
+                <option value="Cash on Delivery">Cash on Delivery</option>
+              </select>
+            </div>
+          </div>
+
+          {/* TRANSACTIONS TABLE */}
           <div className="overflow-x-auto bg-white border border-[#DCEAF0] rounded-2xl shadow-xs">
             <table className="w-full text-left text-xs text-[#1F2937]">
               <thead className="bg-[#FAF9F6] text-[#667085] uppercase text-[10px] border-b border-[#DCEAF0]">
                 <tr>
-                  <th className="p-3">Payment ID</th>
+                  <th className="p-3">Transaction ID</th>
                   <th className="p-3">Order ID</th>
                   <th className="p-3">Payment Date</th>
-                  <th className="p-3">Payment Method</th>
+                  <th className="p-3">Method</th>
                   <th className="p-3">Amount Paid</th>
+                  <th className="p-3">Refund Amount</th>
                   <th className="p-3">Payment Status</th>
+                  <th className="p-3 text-right">Details</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F5F1E8]">
-                {payments.map((p) => (
-                  <tr key={p.payment_id} className="hover:bg-[#FAF9F6]">
-                    <td className="p-3 font-mono text-[#567C8D] font-bold">{p.payment_id}</td>
-                    <td className="p-3 font-mono text-[#667085]">{p.order_id}</td>
-                    <td className="p-3 text-[#667085]">{p.payment_date}</td>
-                    <td className="p-3 text-[#14213D] font-semibold">{p.payment_method}</td>
-                    <td className="p-3 font-extrabold text-[#14213D]">₹{p.amount_paid?.toLocaleString('en-IN')}</td>
-                    <td className="p-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        p.payment_status === 'Success'
-                          ? 'bg-emerald-50 text-[#15803D] border border-emerald-200'
-                          : 'bg-red-50 text-[#B42318] border border-red-200'
-                      }`}>
-                        {p.payment_status}
-                      </span>
+                {payments
+                  .filter(p => {
+                    if (paymentStatusFilter !== 'all' && (p.payment_status || '').toLowerCase() !== paymentStatusFilter.toLowerCase()) return false;
+                    if (paymentMethodFilter !== 'all' && (p.payment_method || '').toLowerCase() !== paymentMethodFilter.toLowerCase()) return false;
+                    return true;
+                  })
+                  .map((p) => (
+                    <tr key={p.payment_id} className="hover:bg-[#FAF9F6] transition">
+                      <td className="p-3 font-mono text-[#567C8D] font-bold">{p.payment_id}</td>
+                      <td className="p-3">
+                        <button
+                          onClick={() => handleOpenOrderDetail(p.order_id)}
+                          className="font-mono text-[#14213D] hover:text-[#567C8D] font-semibold underline decoration-dotted cursor-pointer"
+                        >
+                          {p.order_id}
+                        </button>
+                      </td>
+                      <td className="p-3 text-[#667085]">{p.payment_date}</td>
+                      <td className="p-3 text-[#14213D] font-semibold">{p.payment_method}</td>
+                      <td className="p-3 font-extrabold text-[#14213D]">₹{p.amount_paid?.toLocaleString('en-IN')}</td>
+                      <td className="p-3">
+                        {p.refund_amount && p.refund_amount > 0 ? (
+                          <span className="font-extrabold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-[11px]">
+                            ₹{p.refund_amount?.toLocaleString('en-IN')}
+                          </span>
+                        ) : (
+                          <span className="text-[#667085]">₹0.00</span>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          p.payment_status === 'Success'
+                            ? 'bg-emerald-50 text-[#15803D] border border-emerald-200'
+                            : p.payment_status === 'Refunded'
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                            : p.payment_status === 'Pending'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                            : 'bg-red-50 text-[#B42318] border border-red-200'
+                        }`}>
+                          {p.payment_status}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => handleOpenOrderDetail(p.order_id)}
+                          className="px-2.5 py-1 text-[11px] font-bold text-[#567C8D] hover:bg-[#DCEAF0] rounded-lg transition cursor-pointer"
+                        >
+                          Breakdown →
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                {payments.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-xs text-[#667085]">
+                      No payment or transaction records found for this account.
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -1086,19 +1308,42 @@ export function CustomerAccountView({ currentUser, onOpenAuth }: CustomerAccount
 
             {/* FINANCIAL BREAKDOWN */}
             <div className="p-4 bg-[#F5F1E8] rounded-xl border border-[#DCEAF0] space-y-2 text-xs">
+              <h4 className="font-bold text-[#14213D] uppercase text-[10px] tracking-wider mb-2">Order Financial Reconciliation</h4>
               {selectedOrder.coupon_code && (
                 <div className="flex justify-between text-[#567C8D] font-medium border-b border-[#DCEAF0] pb-2 mb-1">
                   <span>Applied Coupon Code:</span>
                   <span className="font-mono bg-white px-2 py-0.5 rounded border border-[#DCEAF0]">{selectedOrder.coupon_code}</span>
                 </div>
               )}
-              <div className="flex justify-between text-[#667085]"><span>Subtotal:</span><span>₹{selectedOrder.subtotal?.toLocaleString('en-IN')}</span></div>
-              <div className="flex justify-between text-[#667085]"><span>Shipping Fee:</span><span>₹{selectedOrder.shipping_fee?.toLocaleString('en-IN')}</span></div>
+              <div className="flex justify-between text-[#667085]"><span>Product Subtotal:</span><span>₹{selectedOrder.subtotal?.toLocaleString('en-IN')}</span></div>
+              <div className="flex justify-between text-[#667085]"><span>Shipping Charges:</span><span>₹{selectedOrder.shipping_fee?.toLocaleString('en-IN')}</span></div>
               <div className="flex justify-between text-[#667085]"><span>Taxes (GST):</span><span>₹{selectedOrder.tax_amount?.toLocaleString('en-IN')}</span></div>
+              {selectedOrder.discount_amount && selectedOrder.discount_amount > 0 ? (
+                <div className="flex justify-between text-emerald-700 font-semibold">
+                  <span>Promotional Discount:</span>
+                  <span>-₹{selectedOrder.discount_amount?.toLocaleString('en-IN')}</span>
+                </div>
+              ) : null}
               <div className="pt-2 border-t border-[#DCEAF0] flex justify-between font-extrabold text-sm text-[#14213D]">
-                <span>Total Amount Paid:</span>
-                <span className="text-[#15803D]">₹{selectedOrder.final_amount?.toLocaleString('en-IN')}</span>
+                <span>Final Order Amount:</span>
+                <span className="text-[#14213D]">₹{selectedOrder.final_amount?.toLocaleString('en-IN')}</span>
               </div>
+              <div className="flex justify-between text-emerald-700 font-bold pt-1">
+                <span>Successfully Paid:</span>
+                <span>₹{(selectedOrder.paid_amount ?? (selectedOrder.payment?.amount_paid || selectedOrder.final_amount))?.toLocaleString('en-IN')}</span>
+              </div>
+              {selectedOrder.refund_amount && selectedOrder.refund_amount > 0 ? (
+                <div className="flex justify-between text-blue-700 font-bold">
+                  <span>Refunded Amount:</span>
+                  <span>₹{selectedOrder.refund_amount?.toLocaleString('en-IN')}</span>
+                </div>
+              ) : null}
+              {selectedOrder.outstanding_amount && selectedOrder.outstanding_amount > 0 ? (
+                <div className="flex justify-between text-rose-700 font-bold">
+                  <span>Outstanding Balance:</span>
+                  <span>₹{selectedOrder.outstanding_amount?.toLocaleString('en-IN')}</span>
+                </div>
+              ) : null}
             </div>
 
             {/* SHIPMENT & PAYMENT STATUS */}
@@ -1351,6 +1596,14 @@ export function CustomerAccountView({ currentUser, onOpenAuth }: CustomerAccount
             </form>
           </div>
         </div>
+      )}
+
+      {/* MULTI-SELLER LIVE TRACKING MODAL */}
+      {trackingOrderId && (
+        <CustomerOrderTrackingModal
+          orderId={trackingOrderId}
+          onClose={() => setTrackingOrderId(null)}
+        />
       )}
 
     </div>

@@ -1,4 +1,4 @@
-from typing import Generator, List
+from typing import Generator, List, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -49,6 +49,30 @@ def get_current_user(
         )
     
     return user
+
+def get_optional_current_user(
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+) -> Optional[AppUser]:
+    """
+    Safely resolves the authenticated user if a valid Bearer token is provided.
+    Returns None if the request is unauthenticated (guest access) without raising an exception.
+    """
+    if not token:
+        return None
+    try:
+        payload = decode_token(token)
+        if not payload:
+            return None
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        user = db.query(AppUser).filter(AppUser.user_id == user_id).first()
+        if not user or not user.is_active:
+            return None
+        return user
+    except Exception:
+        return None
 
 class RoleChecker:
     def __init__(self, allowed_roles: List[str]):

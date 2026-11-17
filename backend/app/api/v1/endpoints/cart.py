@@ -22,7 +22,7 @@ router = APIRouter()
 
 @router.get("", response_model=CartResponse)
 def get_cart(
-    current_user: AppUser = Depends(RoleChecker(["customer", "admin"])),
+    current_user: AppUser = Depends(RoleChecker(["customer"])),
     db: Session = Depends(get_db)
 ):
     """
@@ -33,7 +33,7 @@ def get_cart(
 @router.post("/items", response_model=CartResponse, status_code=status.HTTP_201_CREATED)
 def add_to_cart(
     item_in: CartItemAdd,
-    current_user: AppUser = Depends(RoleChecker(["customer", "admin"])),
+    current_user: AppUser = Depends(RoleChecker(["customer"])),
     db: Session = Depends(get_db)
 ):
     """
@@ -46,7 +46,7 @@ def add_to_cart(
 def update_cart_item(
     cart_item_id: int,
     item_in: CartItemUpdate,
-    current_user: AppUser = Depends(RoleChecker(["customer", "admin"])),
+    current_user: AppUser = Depends(RoleChecker(["customer"])),
     db: Session = Depends(get_db)
 ):
     """
@@ -58,7 +58,7 @@ def update_cart_item(
 @router.delete("/items/{cart_item_id}", response_model=CartResponse)
 def remove_from_cart(
     cart_item_id: int,
-    current_user: AppUser = Depends(RoleChecker(["customer", "admin"])),
+    current_user: AppUser = Depends(RoleChecker(["customer"])),
     db: Session = Depends(get_db)
 ):
     """
@@ -68,7 +68,7 @@ def remove_from_cart(
 
 @router.delete("", response_model=CartResponse)
 def clear_cart(
-    current_user: AppUser = Depends(RoleChecker(["customer", "admin"])),
+    current_user: AppUser = Depends(RoleChecker(["customer"])),
     db: Session = Depends(get_db)
 ):
     """
@@ -79,7 +79,7 @@ def clear_cart(
 @router.post("/merge", response_model=CartResponse)
 def merge_cart(
     req: CartMergeRequest,
-    current_user: AppUser = Depends(RoleChecker(["customer", "admin"])),
+    current_user: AppUser = Depends(RoleChecker(["customer"])),
     db: Session = Depends(get_db)
 ):
     """

@@ -87,6 +87,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const currentRoleInfo = roleLabels[activeRole] || roleLabels.CUSTOMER;
 
+  // Only customers (or guests on customer storefront) may access the customer shopping assistant
+  const canAccessCustomerAICopilot =
+    activeRole === 'CUSTOMER' &&
+    (!currentUser || (currentUser.role && currentUser.role.toLowerCase() === 'customer'));
+
   return (
     <>
       {/* TOP DESKTOP & MOBILE HEADER */}
@@ -132,24 +137,26 @@ export const Navbar: React.FC<NavbarProps> = ({
                     placeholder="Search authentic artisanal products, snacks, footwear..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-[#FFFFFF] border border-[#DCEAF0] rounded-xl pl-9 pr-28 py-2 text-xs text-[#1F2937] placeholder-[#667085] focus:outline-none focus:border-[#567C8D] focus:ring-2 focus:ring-[#567C8D]/20 transition-all shadow-inner"
+                    className={`w-full bg-[#FFFFFF] border border-[#DCEAF0] rounded-xl pl-9 ${canAccessCustomerAICopilot ? 'pr-28' : 'pr-10'} py-2 text-xs text-[#1F2937] placeholder-[#667085] focus:outline-none focus:border-[#567C8D] focus:ring-2 focus:ring-[#567C8D]/20 transition-all shadow-inner`}
                   />
                   {searchTerm && (
                     <button
                       onClick={() => setSearchTerm('')}
-                      className="absolute right-24 top-1/2 -translate-y-1/2 text-[#667085] hover:text-[#1F2937] p-1"
+                      className={`absolute ${canAccessCustomerAICopilot ? 'right-24' : 'right-3'} top-1/2 -translate-y-1/2 text-[#667085] hover:text-[#1F2937] p-1`}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  <button
-                    onClick={onOpenAIAssistant}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center space-x-1 px-2.5 py-1 bg-[#567C8D] hover:bg-[#3F5E6B] text-white rounded-lg text-[11px] font-semibold transition-all shadow-sm cursor-pointer"
-                    title="Open Conversational AI Assistant"
-                  >
-                    <Sparkles className="w-3 h-3 text-[#FCA311]" />
-                    <span>AI Copilot</span>
-                  </button>
+                  {canAccessCustomerAICopilot && (
+                    <button
+                      onClick={onOpenAIAssistant}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center space-x-1 px-2.5 py-1 bg-[#567C8D] hover:bg-[#3F5E6B] text-white rounded-lg text-[11px] font-semibold transition-all shadow-sm cursor-pointer"
+                      title="Open Conversational AI Assistant"
+                    >
+                      <Sparkles className="w-3 h-3 text-[#FCA311]" />
+                      <span>AI Copilot</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -254,15 +261,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                   placeholder="Search products, groceries, footwear..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-white border border-[#DCEAF0] rounded-xl pl-9 pr-24 py-2 text-xs text-[#1F2937] placeholder-[#667085] focus:outline-none focus:border-[#567C8D]"
+                  className={`w-full bg-white border border-[#DCEAF0] rounded-xl pl-9 ${canAccessCustomerAICopilot ? 'pr-24' : 'pr-4'} py-2 text-xs text-[#1F2937] placeholder-[#667085] focus:outline-none focus:border-[#567C8D]`}
                 />
-                <button
-                  onClick={onOpenAIAssistant}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center space-x-1 px-2.5 py-1 bg-[#567C8D] text-white rounded-lg text-[10px] font-semibold"
-                >
-                  <Sparkles className="w-3 h-3 text-[#FCA311]" />
-                  <span>AI Copilot</span>
-                </button>
+                {canAccessCustomerAICopilot && (
+                  <button
+                    onClick={onOpenAIAssistant}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center space-x-1 px-2.5 py-1 bg-[#567C8D] text-white rounded-lg text-[10px] font-semibold"
+                  >
+                    <Sparkles className="w-3 h-3 text-[#FCA311]" />
+                    <span>AI Copilot</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -285,28 +294,32 @@ export const Navbar: React.FC<NavbarProps> = ({
           <span>Shop</span>
         </button>
 
-        <button
-          onClick={() => {
-            if (onOpenAIAssistant) onOpenAIAssistant();
-          }}
-          className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-medium text-[#87CEEB] hover:text-white transition-colors"
-        >
-          <Sparkles className="w-4 h-4 mb-0.5 text-[#FCA311]" />
-          <span>AI Copilot</span>
-        </button>
+        {canAccessCustomerAICopilot && (
+          <button
+            onClick={() => {
+              if (onOpenAIAssistant) onOpenAIAssistant();
+            }}
+            className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-medium text-[#87CEEB] hover:text-white transition-colors"
+          >
+            <Sparkles className="w-4 h-4 mb-0.5 text-[#FCA311]" />
+            <span>AI Copilot</span>
+          </button>
+        )}
 
-        <button
-          onClick={onOpenCart}
-          className="relative flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-medium text-[#DCEAF0]/70 hover:text-white transition-colors"
-        >
-          <ShoppingCart className="w-4 h-4 mb-0.5" />
-          <span>Cart</span>
-          {cartCount > 0 && (
-            <span className="absolute top-0 right-2 bg-[#FCA311] text-[#14213D] font-extrabold text-[9px] w-4 h-4 rounded-full flex items-center justify-center">
-              {cartCount}
-            </span>
-          )}
-        </button>
+        {activeRole === 'CUSTOMER' && (
+          <button
+            onClick={onOpenCart}
+            className="relative flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-medium text-[#DCEAF0]/70 hover:text-white transition-colors"
+          >
+            <ShoppingCart className="w-4 h-4 mb-0.5" />
+            <span>Cart</span>
+            {cartCount > 0 && (
+              <span className="absolute top-0 right-2 bg-[#FCA311] text-[#14213D] font-extrabold text-[9px] w-4 h-4 rounded-full flex items-center justify-center">
+                {cartCount}
+              </span>
+            )}
+          </button>
+        )}
 
         <button
           onClick={() => {

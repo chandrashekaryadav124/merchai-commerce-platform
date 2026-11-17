@@ -17,11 +17,14 @@ class Seller(Base):
 class SellerProduct(Base):
     __tablename__ = "seller_products"
 
-    seller_product_id = Column(BigInteger, primary_key=True, autoincrement=True)
+    seller_product_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     seller_id = Column(String(64), nullable=False, index=True)
     product_id = Column(String(255), nullable=False, index=True)
+    sku = Column(String(100), nullable=True)
     selling_price = Column(Numeric(12, 2), nullable=False)
+    discount_price = Column(Numeric(12, 2), nullable=True)
     stock_quantity = Column(Integer, default=0)
+    low_stock_threshold = Column(Integer, default=10)
     listing_status = Column(String(50), default="active")
     assigned_by = Column(String(64), nullable=True)
     created_at = Column(DateTime, server_default=func.now())

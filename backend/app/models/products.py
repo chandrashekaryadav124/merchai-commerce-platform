@@ -6,6 +6,7 @@ class Product(Base):
 
     product_id = Column(String(255), primary_key=True)
     product_name = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
     category = Column(Text, nullable=True)
     subcategory = Column(Text, nullable=True)
     brand = Column(Text, nullable=True)

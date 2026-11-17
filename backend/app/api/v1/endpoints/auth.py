@@ -68,6 +68,12 @@ def set_initial_password(req: SetPasswordRequest, db: Session = Depends(get_db))
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
     
+    if user.password_hash != "PASSWORD_SETUP_REQUIRED":
+        raise HTTPException(
+            status_code=400,
+            detail="Password setup is not permitted for this account. If you forgot your password, please use the reset workflow."
+        )
+
     if len(req.new_password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
     

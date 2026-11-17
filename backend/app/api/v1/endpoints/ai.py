@@ -52,6 +52,8 @@ def seller_advisor_endpoint(
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if current_user.role not in ["seller", "admin"]:
+        raise HTTPException(status_code=403, detail="Access denied: Only sellers and administrators can access the Seller Advisor.")
     if current_user.role == "seller":
         seller = db.query(Seller).filter(Seller.user_id == current_user.user_id).first()
         if not seller or seller.seller_id != req.seller_id:
@@ -64,6 +66,8 @@ def demand_forecast_endpoint(
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if current_user.role not in ["seller", "admin"]:
+        raise HTTPException(status_code=403, detail="Access denied: Only sellers and administrators can access demand forecasting.")
     if current_user.role == "seller":
         seller = db.query(Seller).filter(Seller.user_id == current_user.user_id).first()
         if not seller or seller.seller_id != store_id:
@@ -76,9 +80,35 @@ def rag_query_endpoint(
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if current_user.role not in ["seller", "admin"]:
+        raise HTTPException(status_code=403, detail="Access denied: Only sellers and administrators can query RAG knowledge.")
     if current_user.role == "seller":
         seller = db.query(Seller).filter(Seller.user_id == current_user.user_id).first()
         if not seller or seller.seller_id != req.seller_id:
             raise HTTPException(status_code=403, detail="Access denied: Sellers can only query RAG knowledge for their own storefront.")
     return rag_knowledge_query(req.seller_id, req.query)
+
+
+from app.schemas.ai import ChatConversationRequest, ChatConversationResponse
+from app.services.genai_service import chat_conversation_engine
+from app.core.deps import get_optional_current_user
+
+@router.post("/chat", response_model=ChatConversationResponse)
+def chat_conversation_endpoint(
+    req: ChatConversationRequest,
+    current_user: Optional[AppUser] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Conversational AI Chatbot Endpoint unifying product discovery, order tracking,
+    policy inquiries, and customer support ticket escalation.
+    Supports guest users (browsing & public FAQs) and authenticated customers (orders & tickets).
+    """
+    return chat_conversation_engine(
+        messages=req.messages,
+        db=db,
+        current_user=current_user,
+        session_id=req.session_id,
+        context=req.context
+    )
 

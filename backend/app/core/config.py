@@ -15,10 +15,10 @@ _backend_dir = Path(__file__).resolve().parent.parent.parent
 _root_dir = _backend_dir.parent
 
 if (_root_dir / ".env").exists():
-    load_dotenv(_root_dir / ".env")
+    load_dotenv(_root_dir / ".env", override=False)
 
 if (_backend_dir / ".env").exists():
-    load_dotenv(_backend_dir / ".env", override=True)
+    load_dotenv(_backend_dir / ".env", override=False)
 
 # Known insecure keys that must never be accepted in production
 KNOWN_INSECURE_KEYS = {
@@ -101,12 +101,15 @@ class Settings(BaseModel):
         "ai_commerce_cleaned" if _detect_default_app_env() == "production" else "ai_commerce_dev"
     )
     
-    # Isolated Test Database Configuration
-    MYSQL_TEST_HOST: str = os.getenv("MYSQL_TEST_HOST", "127.0.0.1")
-    MYSQL_TEST_PORT: int = int(os.getenv("MYSQL_TEST_PORT", "3306"))
-    MYSQL_TEST_USER: str = os.getenv("MYSQL_TEST_USER", "root")
-    MYSQL_TEST_PASSWORD: str = os.getenv("MYSQL_TEST_PASSWORD", "")
-    MYSQL_TEST_DB: str = os.getenv("MYSQL_TEST_DB", "ai_commerce_test")
+    # Isolated Test Database Configuration (falls back to local dev database if not explicitly overridden)
+    MYSQL_TEST_HOST: str = os.getenv("MYSQL_TEST_HOST", os.getenv("MYSQL_HOST", "127.0.0.1"))
+    MYSQL_TEST_PORT: int = int(os.getenv("MYSQL_TEST_PORT", os.getenv("MYSQL_PORT", "3306")))
+    MYSQL_TEST_USER: str = os.getenv("MYSQL_TEST_USER", os.getenv("MYSQL_USER", "root"))
+    MYSQL_TEST_PASSWORD: str = os.getenv("MYSQL_TEST_PASSWORD", os.getenv("MYSQL_PASSWORD", ""))
+    MYSQL_TEST_DB: str = os.getenv(
+        "MYSQL_TEST_DB",
+        os.getenv("MYSQL_DB", "ai_commerce_test")
+    )
     
     MYSQL_SSL_MODE: Optional[str] = os.getenv("MYSQL_SSL_MODE")
     MYSQL_SSL_CA: Optional[str] = os.getenv("MYSQL_SSL_CA")

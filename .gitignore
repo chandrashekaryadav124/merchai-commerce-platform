@@ -54,6 +54,10 @@ build/
 *.db
 platform.db
 
+# Uploaded media (local storage)
+uploads/
+backend/uploads/
+
 # Logs & Debugging
 *.log
 npm-debug.log*

@@ -9,7 +9,7 @@ from app.models.users import AppUser
 from app.models.cart import Cart, CartItem
 from app.models.sellers import Seller, SellerProduct
 from app.models.products import Product, ProductImage
-from app.models.orders import Order, OrderItem, SellerOrder, SellerOrderItem
+from app.models.orders import Order, OrderItem, SellerOrder, SellerOrderItem, SellerOrderStatusHistory
 from app.models.customer_account import CustomerProfile, CustomerAddress, Payment
 from app.models.logistics import Shipment
 from app.schemas.checkout import CheckoutSummaryResponse, OrderPlacementRequest
@@ -301,11 +301,20 @@ def place_order_service(
             so = SellerOrder(
                 order_id=new_order_id,
                 seller_id=s_id,
-                status="Processing",
+                status="PLACED",
                 subtotal=s_subtotal
             )
             db.add(so)
             db.flush()
+
+            history = SellerOrderStatusHistory(
+                seller_order_id=so.seller_order_id,
+                previous_status=None,
+                new_status="PLACED",
+                changed_by="CUSTOMER",
+                notes="Order placed by customer via checkout"
+            )
+            db.add(history)
 
             for it in s_items:
                 soi = SellerOrderItem(

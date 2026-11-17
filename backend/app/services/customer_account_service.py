@@ -27,7 +27,11 @@ from app.schemas.customer_account import (
     CustomerReviewResponse,
     CreateReviewRequest,
     SupportTicketResponse,
-    CreateSupportTicketRequest
+    CreateSupportTicketRequest,
+    CustomerFinancialOverviewResponse,
+    CustomerCategorySpendingItem,
+    CustomerSpendingTrendPoint,
+    CustomerPaymentMethodStat
 )
 from app.services.audit_service import log_audit_action
 
@@ -211,6 +215,14 @@ def get_paginated_customer_orders_service(
         pay = db.query(Payment).filter(Payment.order_id == o.order_id).first()
         pay_resp = PaymentHistoryResponse.model_validate(pay) if pay else None
         
+        o_subtotal = float(o.subtotal or 0.0)
+        o_discount_pct = float(o.discount_percentage or 0.0)
+        o_discount_amt = round(o_subtotal * (o_discount_pct / 100.0), 2)
+        o_final = float(o.final_amount or 0.0)
+        paid_val = float(pay.amount_paid or 0.0) if pay else 0.0
+        ref_val = float(pay.refund_amount or 0.0) if pay else 0.0
+        out_val = max(0.0, round(o_final - paid_val, 2))
+
         order_responses.append(OrderDetailResponse(
             order_id=o.order_id,
             customer_id=o.customer_id,
@@ -221,10 +233,16 @@ def get_paginated_customer_orders_service(
             delivery_city=o.delivery_city,
             delivery_state=o.delivery_state,
             coupon_code=o.coupon_code,
-            subtotal=float(o.subtotal or 0.0),
+            subtotal=o_subtotal,
             shipping_fee=float(o.shipping_fee or 0.0),
             tax_amount=float(o.tax_amount or 0.0),
-            final_amount=float(o.final_amount or 0.0),
+            discount_amount=o_discount_amt,
+            final_amount=o_final,
+            paid_amount=paid_val,
+            refund_amount=ref_val,
+            outstanding_amount=out_val,
+            payment_status=pay.payment_status if pay else "Pending",
+            delivery_status=shp.delivery_status if shp else "Pending",
             items=item_details,
             shipment=shp_resp,
             payment=pay_resp
@@ -267,6 +285,14 @@ def get_customer_order_detail_service(db: Session, current_user: AppUser, order_
     shp = db.query(Shipment).filter(Shipment.order_id == order_id).first()
     pay = db.query(Payment).filter(Payment.order_id == order_id).first()
 
+    o_subtotal = float(order.subtotal or 0.0)
+    o_discount_pct = float(order.discount_percentage or 0.0)
+    o_discount_amt = round(o_subtotal * (o_discount_pct / 100.0), 2)
+    o_final = float(order.final_amount or 0.0)
+    paid_val = float(pay.amount_paid or 0.0) if pay else 0.0
+    ref_val = float(pay.refund_amount or 0.0) if pay else 0.0
+    out_val = max(0.0, round(o_final - paid_val, 2))
+
     return OrderDetailResponse(
         order_id=order.order_id,
         customer_id=order.customer_id,
@@ -277,10 +303,16 @@ def get_customer_order_detail_service(db: Session, current_user: AppUser, order_
         delivery_city=order.delivery_city,
         delivery_state=order.delivery_state,
         coupon_code=order.coupon_code,
-        subtotal=float(order.subtotal or 0.0),
+        subtotal=o_subtotal,
         shipping_fee=float(order.shipping_fee or 0.0),
         tax_amount=float(order.tax_amount or 0.0),
-        final_amount=float(order.final_amount or 0.0),
+        discount_amount=o_discount_amt,
+        final_amount=o_final,
+        paid_amount=paid_val,
+        refund_amount=ref_val,
+        outstanding_amount=out_val,
+        payment_status=pay.payment_status if pay else "Pending",
+        delivery_status=shp.delivery_status if shp else "Pending",
         items=item_details,
         shipment=ShipmentTrackingResponse.model_validate(shp) if shp else None,
         payment=PaymentHistoryResponse.model_validate(pay) if pay else None
@@ -296,14 +328,135 @@ def get_customer_shipments_service(db: Session, current_user: AppUser) -> List[S
     
     return [ShipmentTrackingResponse.model_validate(s) for s in shipments]
 
-def get_customer_payments_service(db: Session, current_user: AppUser) -> List[PaymentHistoryResponse]:
+def get_customer_payments_service(
+    db: Session,
+    current_user: AppUser,
+    status_filter: Optional[str] = None,
+    method_filter: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
+) -> List[PaymentHistoryResponse]:
     customer_ids = resolve_customer_ids(db, current_user)
     
-    payments = db.query(Payment).join(Order, Payment.order_id == Order.order_id).filter(
+    query = db.query(Payment).join(Order, Payment.order_id == Order.order_id).filter(
         Order.customer_id.in_(customer_ids)
-    ).all()
-    
+    )
+    if status_filter and status_filter.lower() != "all":
+        query = query.filter(func.lower(Payment.payment_status) == status_filter.lower())
+    if method_filter and method_filter.lower() != "all":
+        query = query.filter(func.lower(Payment.payment_method) == method_filter.lower())
+
+    payments = query.order_by(Payment.payment_date.desc()).offset(offset).limit(limit).all()
     return [PaymentHistoryResponse.model_validate(p) for p in payments]
+
+def get_customer_financial_overview_service(db: Session, current_user: AppUser) -> CustomerFinancialOverviewResponse:
+    customer_ids = resolve_customer_ids(db, current_user)
+    
+    # 1. Orders stats
+    orders = db.query(Order).filter(Order.customer_id.in_(customer_ids)).all()
+    order_ids = [o.order_id for o in orders]
+    total_orders = len(orders)
+    total_spending = sum(float(o.final_amount or 0.0) for o in orders)
+    
+    # 2. Payments stats
+    if order_ids:
+        payments = db.query(Payment).filter(Payment.order_id.in_(order_ids)).all()
+    else:
+        payments = []
+        
+    total_transactions = len(payments)
+    total_paid = sum(float(p.amount_paid or 0.0) for p in payments if p.payment_status and p.payment_status.lower() in ["success", "paid"])
+    pending_payment_amount = sum(float(p.amount_paid or 0.0) for p in payments if p.payment_status and p.payment_status.lower() in ["pending", "processing"])
+    failed_payment_amount = sum(float(p.amount_paid or 0.0) for p in payments if p.payment_status and p.payment_status.lower() in ["failed", "not charged"])
+    total_refunded = sum(float(p.refund_amount or 0.0) for p in payments)
+    
+    # Check unpaid orders
+    paid_order_ids = {p.order_id for p in payments if p.payment_status and p.payment_status.lower() in ["success", "paid"]}
+    unpaid_orders_sum = sum(float(o.final_amount or 0.0) for o in orders if o.order_id not in paid_order_ids and (o.order_status or "").lower() not in ["cancelled", "failed"])
+    if pending_payment_amount == 0 and unpaid_orders_sum > 0:
+        pending_payment_amount = unpaid_orders_sum
+
+    # 3. Category spending
+    cat_map = {}
+    if order_ids:
+        items = db.query(OrderItem.product_id, OrderItem.item_revenue, OrderItem.order_id).filter(OrderItem.order_id.in_(order_ids)).all()
+        prod_ids = [it.product_id for it in items if it.product_id]
+        if prod_ids:
+            prods = db.query(Product.product_id, Product.category).filter(Product.product_id.in_(prod_ids)).all()
+            prod_cat_map = {p[0]: (p[1] or "General") for p in prods}
+        else:
+            prod_cat_map = {}
+        for it in items:
+            cat = prod_cat_map.get(it.product_id, "General")
+            if cat not in cat_map:
+                cat_map[cat] = {"amount": 0.0, "order_count": set()}
+            cat_map[cat]["amount"] += float(it.item_revenue or 0.0)
+            cat_map[cat]["order_count"].add(it.order_id)
+            
+    category_spending = [
+        CustomerCategorySpendingItem(
+            category=k,
+            amount=round(v["amount"], 2),
+            order_count=len(v["order_count"])
+        )
+        for k, v in sorted(cat_map.items(), key=lambda x: x[1]["amount"], reverse=True)
+    ]
+    
+    # 4. Payment method distribution
+    pm_map = {}
+    for p in payments:
+        m = p.payment_method or "Unknown"
+        if m not in pm_map:
+            pm_map[m] = {"count": 0, "amount": 0.0}
+        pm_map[m]["count"] += 1
+        pm_map[m]["amount"] += float(p.amount_paid or 0.0)
+        
+    payment_methods = [
+        CustomerPaymentMethodStat(
+            method=k,
+            count=v["count"],
+            amount=round(v["amount"], 2)
+        )
+        for k, v in pm_map.items()
+    ]
+    
+    return CustomerFinancialOverviewResponse(
+        total_orders=total_orders,
+        total_spending=round(total_spending, 2),
+        total_paid=round(total_paid, 2),
+        pending_payment_amount=round(pending_payment_amount, 2),
+        failed_payment_amount=round(failed_payment_amount, 2),
+        total_refunded=round(total_refunded, 2),
+        total_transactions=total_transactions,
+        spending_by_category=category_spending,
+        payment_methods=payment_methods
+    )
+
+def get_customer_spending_trend_service(db: Session, current_user: AppUser) -> List[CustomerSpendingTrendPoint]:
+    customer_ids = resolve_customer_ids(db, current_user)
+    orders = db.query(Order).filter(
+        Order.customer_id.in_(customer_ids),
+        Order.order_date.isnot(None),
+        Order.order_date != ""
+    ).order_by(Order.order_date.asc()).all()
+    
+    trend_map = {}
+    for o in orders:
+        month_str = str(o.order_date)[:7] if len(str(o.order_date)) >= 7 else "Recent"
+        if month_str not in trend_map:
+            trend_map[month_str] = {"spending": 0.0, "order_count": 0}
+        trend_map[month_str]["spending"] += float(o.final_amount or 0.0)
+        trend_map[month_str]["order_count"] += 1
+        
+    return [
+        CustomerSpendingTrendPoint(
+            month=k,
+            spending=round(v["spending"], 2),
+            order_count=v["order_count"]
+        )
+        for k, v in sorted(trend_map.items())
+    ]
+
 
 def get_customer_returns_service(db: Session, current_user: AppUser) -> List[ReturnRefundResponse]:
     customer_ids = resolve_customer_ids(db, current_user)

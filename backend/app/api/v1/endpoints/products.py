@@ -36,14 +36,14 @@ def enrich_product_response(
     img_list = images or []
     image_url = img_list[0] if img_list else None
 
-    # Authoritative price calculation:
-    # A discount is only valid when selling_price is genuinely lower than original catalog price
-    base_price = product.price if product.price is not None else selling_price
+    # Authentic price calculation
     discount_price = None
-    if selling_price is not None and base_price is not None and selling_price < base_price:
+    if sp and sp.discount_price is not None:
+        discount_price = float(sp.discount_price)
+    elif selling_price is not None and product.price is not None and selling_price < product.price:
         discount_price = selling_price
-    else:
-        base_price = selling_price
+
+    final_description = description or product.description
 
     return ProductResponse(
         product_id=product.product_id,
@@ -51,7 +51,7 @@ def enrich_product_response(
         category=product.category,
         subcategory=product.subcategory,
         brand=product.brand,
-        price=base_price,
+        price=product.price if product.price is not None else selling_price,
         cost_price=product.cost_price,
         discount_range=product.discount_range,
         rating_average=product.rating_average,
@@ -61,11 +61,13 @@ def enrich_product_response(
         product_type=product.product_type,
         image_url=image_url,
         images=img_list,
-        description=description,
+        description=final_description,
         store_name=store_name,
         seller_id=seller_id,
+        sku=sp.sku if sp else None,
         selling_price=selling_price,
-        discount_price=discount_price
+        discount_price=discount_price,
+        low_stock_threshold=sp.low_stock_threshold if sp else None
     )
 
 @router.get("/categories", response_model=List[str])
@@ -83,6 +85,15 @@ def list_products(
     db: Session = Depends(get_db)
 ):
     query = db.query(Product)
+
+    # Exclude products whose seller listing has been archived or removed
+    inactive_product_ids = [
+        row[0] for row in db.query(SellerProduct.product_id).filter(
+            SellerProduct.listing_status.in_(["removed", "paused", "draft"])
+        ).all()
+    ]
+    if inactive_product_ids:
+        query = query.filter(Product.product_id.notin_(inactive_product_ids))
     
     if category and category != "All":
         cat_terms = [c.strip() for c in category.replace("&", ",").split(",") if c.strip()]
@@ -146,6 +157,9 @@ def get_product(product_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Product not found.")
 
     sp = db.query(SellerProduct).filter(SellerProduct.product_id == product.product_id).first()
+    if sp and sp.listing_status in ["removed", "draft", "paused"]:
+        raise HTTPException(status_code=404, detail="Product is not currently available for purchase.")
+
     seller = None
     if sp and sp.seller_id:
         seller = db.query(Seller).filter(Seller.seller_id == sp.seller_id).first()

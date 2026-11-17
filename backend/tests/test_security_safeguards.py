@@ -25,6 +25,27 @@ def test_production_db_strictly_blocked_in_tests():
     assert "CRITICAL SAFETY SAFEGUARD" in str(exc_info.value)
     assert "strictly prohibited" in str(exc_info.value).lower()
 
+def test_app_env_alone_cannot_bypass_database_safety_checks():
+    """Verify that setting APP_ENV=production alone cannot bypass database safety checks during testing or migrations."""
+    # 1. In testing context, APP_ENV='production' must still be strictly blocked from connecting to cloud DB
+    s_test = Settings(APP_ENV="production", MYSQL_HOST="127.0.0.1", ALLOW_PRODUCTION_DB_ACCESS=True, SECRET_KEY="a" * 32)
+    with pytest.raises(RuntimeError) as exc_info:
+        s_test.validate_database_target("mysql-project.aivencloud.com", is_test=True)
+    assert "CRITICAL SAFETY SAFEGUARD" in str(exc_info.value)
+    assert "strictly prohibited" in str(exc_info.value).lower()
+
+    # 2. In schema migration context, APP_ENV='production' alone without ALLOW_PRODUCTION_MIGRATION must be blocked
+    s_mig = Settings(APP_ENV="production", MYSQL_HOST="127.0.0.1", ALLOW_PRODUCTION_DB_ACCESS=True, SECRET_KEY="a" * 32)
+    old_env = os.environ.pop("ALLOW_PRODUCTION_MIGRATION", None)
+    try:
+        with pytest.raises(RuntimeError) as exc_mig:
+            s_mig.validate_database_target("mysql-project.aivencloud.com", is_test=False, is_migration=True)
+        assert "CRITICAL SAFETY SAFEGUARD" in str(exc_mig.value)
+        assert "blocked" in str(exc_mig.value).lower()
+    finally:
+        if old_env is not None:
+            os.environ["ALLOW_PRODUCTION_MIGRATION"] = old_env
+
 def test_production_db_allowed_in_production():
     """Verify that genuine production environments are permitted to connect to cloud DB."""
     s = Settings(APP_ENV="production", MYSQL_HOST="mysql-project.aivencloud.com", SECRET_KEY="a" * 32)

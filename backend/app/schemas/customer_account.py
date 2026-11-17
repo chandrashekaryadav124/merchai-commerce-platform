@@ -87,10 +87,43 @@ class OrderDetailResponse(BaseModel):
     subtotal: Optional[float] = 0.0
     shipping_fee: Optional[float] = 0.0
     tax_amount: Optional[float] = 0.0
+    discount_amount: Optional[float] = 0.0
     final_amount: Optional[float] = 0.0
+    paid_amount: Optional[float] = 0.0
+    refund_amount: Optional[float] = 0.0
+    outstanding_amount: Optional[float] = 0.0
+    payment_status: Optional[str] = None
+    delivery_status: Optional[str] = None
     items: List[OrderItemDetail] = []
     shipment: Optional[ShipmentTrackingResponse] = None
     payment: Optional[PaymentHistoryResponse] = None
+
+class CustomerCategorySpendingItem(BaseModel):
+    category: str
+    amount: float
+    order_count: int
+
+class CustomerSpendingTrendPoint(BaseModel):
+    month: str
+    spending: float
+    order_count: int
+
+class CustomerPaymentMethodStat(BaseModel):
+    method: str
+    count: int
+    amount: float
+
+class CustomerFinancialOverviewResponse(BaseModel):
+    total_orders: int
+    total_spending: float
+    total_paid: float
+    pending_payment_amount: float
+    failed_payment_amount: float
+    total_refunded: float
+    total_transactions: int
+    spending_by_category: List[CustomerCategorySpendingItem] = []
+    payment_methods: List[CustomerPaymentMethodStat] = []
+
 
 class PaginatedOrdersResponse(BaseModel):
     total: int

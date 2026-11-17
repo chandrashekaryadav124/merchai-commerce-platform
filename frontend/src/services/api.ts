@@ -7,7 +7,51 @@ import type {
   DemandForecastItem,
   RAGQueryResponse,
   AdminMetrics,
-  FraudAlert
+  FraudAlert,
+  ChatMessage,
+  ChatConversationResponse,
+  SalesTrendPoint,
+  OrderStatusDistributionItem,
+  CategoryPerformanceItem,
+  TopSellerItem,
+  ActivityLogItem,
+  SellerAnalytics,
+  SellerTopProduct,
+  SellerOrderStatusCount,
+  SellerCustomerReview,
+  OperationsMetrics,
+  OperationsStatusDistributionItem,
+  OperationsWarehouseDistributionItem,
+  Shipment,
+  InventorySnapshot,
+  SupportMetrics,
+  SupportCreationTrendPoint,
+  CustomerFinancialOverview,
+  CustomerSpendingTrendPoint,
+  SellerFinancialAnalytics,
+  SellerSalesTrendPoint,
+  SellerCategoryPerformanceItem,
+  SellerPaymentMethodDistributionItem,
+  SellerTransactionItem,
+  AdminFinancialOverview,
+  PaymentStatusDistributionItem,
+  PlatformGrowthPoint,
+  RecentTransactionItem,
+  SellerProductDetail,
+  SellerProductCreatePayload,
+  SellerProductUpdatePayload,
+  ImageUploadResult,
+  InventoryAdjustmentPayload,
+  InventoryAdjustmentResult,
+  SellerInventorySummary,
+  InventoryHistoryItem,
+  SellerOrderDetail,
+  CourierPartner,
+  ShipmentDetail,
+  ReadyForPickupItem,
+  ShipmentCreatePayload,
+  ShipmentStatusUpdatePayload,
+  CustomerOrderTracking
 } from '../types';
 
 const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').trim().replace(/\/+$/, '');
@@ -18,6 +62,15 @@ function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+function getMultipartAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem('access_token');
+  const headers: Record<string, string> = {};
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -143,8 +196,37 @@ export async function fetchCustomerAccountShipments(): Promise<any[]> {
   return res.json();
 }
 
-export async function fetchCustomerAccountPayments(): Promise<any[]> {
-  const res = await fetch(`${API_BASE}/customer/account/payments`, {
+export async function fetchCustomerFinancialOverview(): Promise<CustomerFinancialOverview> {
+  const res = await fetch(`${API_BASE}/customer/account/financial-overview`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch customer financial overview');
+  return res.json();
+}
+
+export async function fetchCustomerSpendingTrend(): Promise<CustomerSpendingTrendPoint[]> {
+  const res = await fetch(`${API_BASE}/customer/account/spending-trend`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch customer spending trend');
+  return res.json();
+}
+
+export async function fetchCustomerAccountPayments(params?: {
+  statusFilter?: string;
+  methodFilter?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<any[]> {
+  const query = new URLSearchParams();
+  if (params?.statusFilter) query.append('status_filter', params.statusFilter);
+  if (params?.methodFilter) query.append('method_filter', params.methodFilter);
+  if (params?.limit) query.append('limit', params.limit.toString());
+  if (params?.offset) query.append('offset', params.offset.toString());
+
+  const qs = query.toString();
+  const url = `${API_BASE}/customer/account/payments${qs ? `?${qs}` : ''}`;
+  const res = await fetch(url, {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error('Failed to fetch payments history');
@@ -457,7 +539,157 @@ export async function fetchMySellerProducts(): Promise<any[]> {
   return res.json();
 }
 
-export async function fetchMySellerAnalytics(): Promise<any> {
+// === SPRINT 0.3: SELLER PRODUCT CRUD, IMAGES & INVENTORY API ===
+
+export async function uploadSellerProductImages(files: File[]): Promise<ImageUploadResult[]> {
+  const formData = new FormData();
+  files.forEach((file) => {
+    formData.append('files', file);
+  });
+
+  const res = await fetch(`${API_BASE}/sellers/me/products/upload-images`, {
+    method: 'POST',
+    headers: getMultipartAuthHeaders(),
+    body: formData,
+  });
+
+  if (!res.ok) {
+    throw await parseResponseError(res, 'Failed to upload product images');
+  }
+  return res.json();
+}
+
+export async function createSellerProduct(payload: SellerProductCreatePayload): Promise<SellerProductDetail> {
+  const res = await fetch(`${API_BASE}/sellers/me/products`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw await parseResponseError(res, 'Failed to create product listing');
+  }
+  return res.json();
+}
+
+export async function fetchSellerProductDetail(productId: string): Promise<SellerProductDetail> {
+  const res = await fetch(`${API_BASE}/sellers/me/products/${productId}`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!res.ok) {
+    throw await parseResponseError(res, 'Failed to fetch product details');
+  }
+  return res.json();
+}
+
+export async function updateSellerProduct(
+  productId: string,
+  payload: SellerProductUpdatePayload
+): Promise<SellerProductDetail> {
+  const res = await fetch(`${API_BASE}/sellers/me/products/${productId}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw await parseResponseError(res, 'Failed to update product');
+  }
+  return res.json();
+}
+
+export async function updateSellerProductStatus(
+  productId: string,
+  listingStatus: string
+): Promise<{ product_id: string; listing_status: string; success: boolean }> {
+  const res = await fetch(`${API_BASE}/sellers/me/products/${productId}/status`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ listing_status: listingStatus }),
+  });
+
+  if (!res.ok) {
+    throw await parseResponseError(res, 'Failed to update listing status');
+  }
+  return res.json();
+}
+
+export async function archiveSellerProduct(
+  productId: string
+): Promise<{ product_id: string; action: string; listing_status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/sellers/me/products/${productId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+
+  if (!res.ok) {
+    throw await parseResponseError(res, 'Failed to archive product');
+  }
+  return res.json();
+}
+
+export async function fetchSellerInventory(statusFilter?: string): Promise<SellerInventorySummary> {
+  const url = statusFilter
+    ? `${API_BASE}/sellers/me/inventory?status_filter=${encodeURIComponent(statusFilter)}`
+    : `${API_BASE}/sellers/me/inventory`;
+
+  const res = await fetch(url, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!res.ok) {
+    throw await parseResponseError(res, 'Failed to fetch seller inventory health');
+  }
+  return res.json();
+}
+
+export async function adjustSellerInventory(
+  productId: string,
+  payload: InventoryAdjustmentPayload
+): Promise<InventoryAdjustmentResult> {
+  const res = await fetch(`${API_BASE}/sellers/me/inventory/${productId}/adjust`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw await parseResponseError(res, 'Failed to adjust inventory');
+  }
+  return res.json();
+}
+
+export async function fetchSellerInventoryHistory(
+  productId?: string,
+  limit: number = 50
+): Promise<InventoryHistoryItem[]> {
+  const url = productId
+    ? `${API_BASE}/sellers/me/inventory/history?limit=${limit}&product_id=${encodeURIComponent(productId)}`
+    : `${API_BASE}/sellers/me/inventory/history?limit=${limit}`;
+
+  const res = await fetch(url, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!res.ok) {
+    throw await parseResponseError(res, 'Failed to fetch inventory movement audit history');
+  }
+  return res.json();
+}
+
+export async function fetchSellerProductPerformance(productId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/sellers/me/products/${productId}/performance`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!res.ok) {
+    throw await parseResponseError(res, 'Failed to fetch product performance metrics');
+  }
+  return res.json();
+}
+
+export async function fetchMySellerAnalytics(): Promise<SellerAnalytics> {
   const res = await fetch(`${API_BASE}/sellers/me/analytics`, {
     headers: getAuthHeaders(),
   });
@@ -498,14 +730,6 @@ export async function fetchOrders(): Promise<any[]> {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error('Failed to fetch orders');
-  return res.json();
-}
-
-export async function fetchSellerOrders(): Promise<any[]> {
-  const res = await fetch(`${API_BASE}/orders/seller`, {
-    headers: getAuthHeaders(),
-  });
-  if (!res.ok) throw new Error('Failed to fetch seller orders');
   return res.json();
 }
 
@@ -580,6 +804,31 @@ export async function askShoppingAssistant(
     assistant_response: data.summary,
     total_price: budget
   };
+}
+
+export async function sendAIChatMessage(
+  messages: ChatMessage[],
+  sessionId?: string,
+  context?: Record<string, any>
+): Promise<ChatConversationResponse> {
+  const payload = {
+    messages: messages.map(m => ({ role: m.role, content: m.content })),
+    session_id: sessionId,
+    context: context
+  };
+
+  const res = await fetch(`${API_BASE}/ai/chat`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ detail: 'Failed to communicate with AI chat service' }));
+    throw new Error(errorData.detail || 'Failed to communicate with AI chat service');
+  }
+
+  return res.json();
 }
 
 export async function askSellerAdvisor(sellerId: string, question: string): Promise<AISellerAdvisorResponse> {
@@ -892,4 +1141,385 @@ export async function placeOrderReal(payload: {
   }
   return res.json();
 }
+
+// === ADVANCED ADMIN ANALYTICS ===
+export async function fetchAdminSalesTrend(days: number = 30): Promise<SalesTrendPoint[]> {
+  const res = await fetch(`${API_BASE}/admin/analytics/sales-trend?days=${days}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch sales trend analytics');
+  return res.json();
+}
+
+export async function fetchAdminOrderStatusDistribution(): Promise<OrderStatusDistributionItem[]> {
+  const res = await fetch(`${API_BASE}/admin/analytics/order-status-distribution`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch order status distribution');
+  return res.json();
+}
+
+export async function fetchAdminCategoryPerformance(limit: number = 10): Promise<CategoryPerformanceItem[]> {
+  const res = await fetch(`${API_BASE}/admin/analytics/category-performance?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch category performance');
+  return res.json();
+}
+
+export async function fetchAdminTopSellers(limit: number = 10): Promise<TopSellerItem[]> {
+  const res = await fetch(`${API_BASE}/admin/analytics/top-sellers?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch top sellers');
+  return res.json();
+}
+
+export async function fetchAdminRecentActivity(limit: number = 15): Promise<ActivityLogItem[]> {
+  const res = await fetch(`${API_BASE}/admin/analytics/recent-activity?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch platform activity logs');
+  return res.json();
+}
+
+// === ADVANCED SELLER ANALYTICS ===
+export async function fetchSellerOrderStatusDistribution(): Promise<SellerOrderStatusCount[]> {
+  const res = await fetch(`${API_BASE}/sellers/me/order-status-distribution`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch seller order status distribution');
+  return res.json();
+}
+
+export async function fetchSellerTopProducts(limit: number = 10): Promise<SellerTopProduct[]> {
+  const res = await fetch(`${API_BASE}/sellers/me/top-products?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch top selling products');
+  return res.json();
+}
+
+export async function fetchSellerReviews(limit: number = 20): Promise<SellerCustomerReview[]> {
+  const res = await fetch(`${API_BASE}/sellers/me/reviews?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch customer reviews');
+  return res.json();
+}
+
+// === ADVANCED OPERATIONS ANALYTICS ===
+export async function fetchOperationsMetrics(): Promise<OperationsMetrics> {
+  const res = await fetch(`${API_BASE}/operations/metrics`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch operations metrics');
+  return res.json();
+}
+
+export async function fetchOperationsStatusDistribution(): Promise<OperationsStatusDistributionItem[]> {
+  const res = await fetch(`${API_BASE}/operations/status-distribution`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch logistics status distribution');
+  return res.json();
+}
+
+export async function fetchOperationsShipmentsPaged(params?: {
+  status_filter?: string;
+  search?: string;
+  delayed_only?: boolean;
+  limit?: number;
+  offset?: number;
+}): Promise<Shipment[]> {
+  const query = new URLSearchParams();
+  if (params?.status_filter && params.status_filter !== 'all') query.append('status_filter', params.status_filter);
+  if (params?.search) query.append('search', params.search);
+  if (params?.delayed_only) query.append('delayed_only', 'true');
+  if (params?.limit) query.append('limit', params.limit.toString());
+  if (params?.offset) query.append('offset', params.offset.toString());
+
+  const res = await fetch(`${API_BASE}/operations/shipments?${query.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch shipments');
+  return res.json();
+}
+
+export async function fetchOperationsInventoryPaged(params?: {
+  search?: string;
+  low_stock_only?: boolean;
+  limit?: number;
+  offset?: number;
+}): Promise<InventorySnapshot[]> {
+  const query = new URLSearchParams();
+  if (params?.search) query.append('search', params.search);
+  if (params?.low_stock_only) query.append('low_stock_only', 'true');
+  if (params?.limit) query.append('limit', params.limit.toString());
+  if (params?.offset) query.append('offset', params.offset.toString());
+
+  const res = await fetch(`${API_BASE}/operations/inventory?${query.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch inventory snapshots');
+  return res.json();
+}
+
+// === ADVANCED SUPPORT ANALYTICS ===
+export async function fetchSupportMetrics(): Promise<SupportMetrics> {
+  const res = await fetch(`${API_BASE}/support/metrics`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch support metrics');
+  return res.json();
+}
+
+export async function fetchSupportTicketsFiltered(params?: {
+  statusFilter?: string;
+  issueTypeFilter?: string;
+  priorityFilter?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<SupportTicket[]> {
+  const query = new URLSearchParams();
+  if (params?.statusFilter && params.statusFilter !== 'all') query.append('status_filter', params.statusFilter);
+  if (params?.issueTypeFilter && params.issueTypeFilter !== 'all') query.append('issue_type_filter', params.issueTypeFilter);
+  if (params?.priorityFilter && params.priorityFilter !== 'all') query.append('priority_filter', params.priorityFilter);
+  if (params?.search) query.append('search', params.search);
+  if (params?.limit) query.append('limit', params.limit.toString());
+  if (params?.offset) query.append('offset', params.offset.toString());
+
+  const res = await fetch(`${API_BASE}/support/tickets?${query.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch support tickets');
+  return res.json();
+}
+
+export async function fetchSupportCreationTrend(): Promise<SupportCreationTrendPoint[]> {
+  const res = await fetch(`${API_BASE}/support/creation-trend`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch support ticket creation trend');
+  return res.json();
+}
+
+// === NEW ADVANCED SELLER FINANCIALS ===
+export async function fetchSellerFinancialAnalytics(): Promise<SellerFinancialAnalytics> {
+  const res = await fetch(`${API_BASE}/sellers/me/financial-analytics`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch seller financial analytics');
+  return res.json();
+}
+
+export async function fetchSellerSalesTrend(timeframe: string = 'daily'): Promise<SellerSalesTrendPoint[]> {
+  const res = await fetch(`${API_BASE}/sellers/me/sales-trend?timeframe=${timeframe}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch seller sales trend');
+  return res.json();
+}
+
+export async function fetchSellerCategoryPerformance(): Promise<SellerCategoryPerformanceItem[]> {
+  const res = await fetch(`${API_BASE}/sellers/me/category-performance`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch seller category performance');
+  return res.json();
+}
+
+export async function fetchSellerPaymentDistribution(): Promise<SellerPaymentMethodDistributionItem[]> {
+  const res = await fetch(`${API_BASE}/sellers/me/payment-distribution`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch seller payment distribution');
+  return res.json();
+}
+
+export async function fetchSellerTransactions(): Promise<SellerTransactionItem[]> {
+  const res = await fetch(`${API_BASE}/sellers/me/transactions`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch seller transactions');
+  return res.json();
+}
+
+// === NEW ADVANCED OPERATIONS ENDPOINTS ===
+export async function fetchOperationsWarehouseDistribution(): Promise<OperationsWarehouseDistributionItem[]> {
+  const res = await fetch(`${API_BASE}/operations/warehouse-distribution`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch warehouse distribution');
+  return res.json();
+}
+
+export async function fetchOperationsDelayedShipments(limit: number = 50): Promise<Shipment[]> {
+  const res = await fetch(`${API_BASE}/operations/delayed-shipments?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch delayed shipments');
+  return res.json();
+}
+
+// === NEW ADVANCED ADMIN FINANCIALS & GROWTH ===
+export async function fetchAdminFinancialOverview(): Promise<AdminFinancialOverview> {
+  const res = await fetch(`${API_BASE}/admin/analytics/financial-overview`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch admin financial overview');
+  return res.json();
+}
+
+export async function fetchAdminPaymentStatusDistribution(): Promise<PaymentStatusDistributionItem[]> {
+  const res = await fetch(`${API_BASE}/admin/analytics/payment-status-distribution`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch payment status distribution');
+  return res.json();
+}
+
+export async function fetchAdminGrowthTrend(): Promise<PlatformGrowthPoint[]> {
+  const res = await fetch(`${API_BASE}/admin/analytics/growth-trend`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch platform growth trend');
+  return res.json();
+}
+
+export async function fetchAdminRecentTransactions(limit: number = 25): Promise<RecentTransactionItem[]> {
+  const res = await fetch(`${API_BASE}/admin/analytics/recent-transactions?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch recent transactions');
+  return res.json();
+}
+
+// === SPRINT 0.4: ORDER MANAGEMENT, SHIPMENTS & COURIERS ===
+
+export async function fetchSellerOrders(
+  status?: string,
+  search?: string,
+  limit: number = 50,
+  offset: number = 0
+): Promise<SellerOrderDetail[]> {
+  const params = new URLSearchParams();
+  if (status && status !== 'ALL') params.append('status', status);
+  if (search && search.trim()) params.append('search', search.trim());
+  params.append('limit', limit.toString());
+  params.append('offset', offset.toString());
+
+  const res = await fetch(`${API_BASE}/orders/seller?${params.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw await parseResponseError(res, 'Failed to fetch seller orders');
+  return res.json();
+}
+
+export async function fetchSingleSellerOrder(sellerOrderId: number): Promise<SellerOrderDetail> {
+  const res = await fetch(`${API_BASE}/orders/seller/${sellerOrderId}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw await parseResponseError(res, 'Failed to fetch order details');
+  return res.json();
+}
+
+export async function updateSellerOrderStatus(
+  sellerOrderId: number,
+  newStatus: string,
+  notes?: string
+): Promise<SellerOrderDetail> {
+  const res = await fetch(`${API_BASE}/orders/seller/${sellerOrderId}/status`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ new_status: newStatus, notes }),
+  });
+  if (!res.ok) throw await parseResponseError(res, 'Failed to update order status');
+  return res.json();
+}
+
+export async function fetchReadyForPickupQueue(
+  search?: string,
+  limit: number = 50,
+  offset: number = 0
+): Promise<ReadyForPickupItem[]> {
+  const params = new URLSearchParams();
+  if (search && search.trim()) params.append('search', search.trim());
+  params.append('limit', limit.toString());
+  params.append('offset', offset.toString());
+
+  const res = await fetch(`${API_BASE}/operations/ready-for-pickup?${params.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw await parseResponseError(res, 'Failed to fetch ready for pickup queue');
+  return res.json();
+}
+
+export async function fetchCourierPartners(): Promise<CourierPartner[]> {
+  const res = await fetch(`${API_BASE}/operations/courier-partners`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw await parseResponseError(res, 'Failed to fetch courier partners');
+  return res.json();
+}
+
+export async function createOperationsShipment(
+  payload: ShipmentCreatePayload
+): Promise<ShipmentDetail> {
+  const res = await fetch(`${API_BASE}/operations/shipments`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await parseResponseError(res, 'Failed to create shipment');
+  return res.json();
+}
+
+export async function fetchOperationsShipmentDetail(shipmentId: string): Promise<ShipmentDetail> {
+  const res = await fetch(`${API_BASE}/operations/shipments/${shipmentId}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw await parseResponseError(res, 'Failed to fetch shipment detail');
+  return res.json();
+}
+
+export async function updateOperationsShipmentStatus(
+  shipmentId: string,
+  payload: ShipmentStatusUpdatePayload
+): Promise<ShipmentDetail> {
+  const res = await fetch(`${API_BASE}/operations/shipments/${shipmentId}/status`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await parseResponseError(res, 'Failed to update shipment status');
+  return res.json();
+}
+
+export async function addShipmentTrackingEvent(
+  shipmentId: string,
+  status: string,
+  location?: string,
+  notes?: string
+): Promise<ShipmentDetail> {
+  const res = await fetch(`${API_BASE}/operations/shipments/${shipmentId}/events`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ status, location, notes }),
+  });
+  if (!res.ok) throw await parseResponseError(res, 'Failed to append tracking event');
+  return res.json();
+}
+
+export async function fetchCustomerOrderTracking(orderId: string): Promise<CustomerOrderTracking> {
+  const res = await fetch(`${API_BASE}/orders/${orderId}/tracking`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw await parseResponseError(res, 'Failed to fetch order tracking');
+  return res.json();
+}
+
+
+
 

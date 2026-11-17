@@ -42,10 +42,10 @@ class OrderItem(Base):
 class SellerOrder(Base):
     __tablename__ = "seller_orders"
 
-    seller_order_id = Column(BigInteger, primary_key=True, autoincrement=True)
+    seller_order_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     order_id = Column(String(255), nullable=False, index=True)
     seller_id = Column(String(64), nullable=False, index=True)
-    status = Column(String(50), default="pending")
+    status = Column(String(50), default="PLACED")
     subtotal = Column(Numeric(12, 2), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -53,10 +53,21 @@ class SellerOrder(Base):
 class SellerOrderItem(Base):
     __tablename__ = "seller_order_items"
 
-    seller_order_item_id = Column(BigInteger, primary_key=True, autoincrement=True)
+    seller_order_item_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     seller_order_id = Column(BigInteger, nullable=False, index=True)
     order_item_id = Column(String(255), nullable=False)
     product_id = Column(String(255), nullable=False)
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Numeric(12, 2), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+class SellerOrderStatusHistory(Base):
+    __tablename__ = "seller_order_status_history"
+
+    history_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    seller_order_id = Column(BigInteger, nullable=False, index=True)
+    previous_status = Column(String(50), nullable=True)
+    new_status = Column(String(50), nullable=False)
+    changed_by = Column(String(64), nullable=True)
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())

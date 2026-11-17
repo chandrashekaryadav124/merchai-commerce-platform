@@ -20,8 +20,10 @@ class ProductResponse(BaseModel):
     description: Optional[str] = None
     store_name: Optional[str] = None
     seller_id: Optional[str] = None
+    sku: Optional[str] = None
     selling_price: Optional[float] = None
     discount_price: Optional[float] = None
+    low_stock_threshold: Optional[int] = None
 
     class Config:
         from_attributes = True

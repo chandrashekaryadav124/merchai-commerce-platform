@@ -15,7 +15,7 @@ router = APIRouter()
 
 @router.get("/summary", response_model=CheckoutSummaryResponse)
 def get_checkout_summary(
-    current_user: AppUser = Depends(RoleChecker(["customer", "admin"])),
+    current_user: AppUser = Depends(RoleChecker(["customer"])),
     db: Session = Depends(get_db)
 ):
     """
@@ -28,7 +28,7 @@ def get_checkout_summary(
 def place_order(
     req: OrderPlacementRequest,
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
-    current_user: AppUser = Depends(RoleChecker(["customer", "admin"])),
+    current_user: AppUser = Depends(RoleChecker(["customer"])),
     db: Session = Depends(get_db)
 ):
     """
